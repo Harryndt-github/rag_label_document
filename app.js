@@ -2024,14 +2024,6 @@ const ExportPage = {
             const { PDFDocument, rgb, StandardFonts } = window.PDFLib;
             const zip = new window.JSZip();
 
-            // Group docs by caseId
-            const docsByCaseId = {};
-            docs.forEach(doc => {
-                const caseId = doc.caseId || 'Uncategorized';
-                if (!docsByCaseId[caseId]) docsByCaseId[caseId] = [];
-                docsByCaseId[caseId].push(doc);
-            });
-
             // Fetch custom font buffer once
             let fontBuffer = null;
             try {
@@ -2041,7 +2033,11 @@ const ExportPage = {
                 console.warn('Custom Roboto font fetch failed:', e);
             }
 
-            for (const [caseId, caseDocs] of Object.entries(docsByCaseId)) {
+            for (let i = 0; i < docs.length; i++) {
+                const doc = docs[i];
+                const caseId = doc.caseId || 'Uncategorized';
+                const docInstance = doc.docInstance || `doc_${i+1}`;
+                
                 const outPdf = await PDFDocument.create();
                 
                 if (window.fontkit) {
@@ -2055,98 +2051,99 @@ const ExportPage = {
                     font = await outPdf.embedFont(StandardFonts?.Helvetica || 'Helvetica');
                 }
 
-                for (let i = 0; i < caseDocs.length; i++) {
-                    const doc = caseDocs[i];
-                    const template = DocumentStore.uploadedTemplates.find(t => t.id === doc.templateId);
-                    
-                    let templatePdfDoc;
-                    if (template && template._file) {
-                         const arrayBuffer = await new Promise((resolve, reject) => {
-                             const r = new FileReader();
-                             r.onload = e => resolve(e.target.result);
-                             r.onerror = e => reject(new Error('FileReader Error'));
-                             r.readAsArrayBuffer(template._file);
-                         });
-                         templatePdfDoc = await PDFDocument.load(arrayBuffer);
-                    } else {
-                         templatePdfDoc = await PDFDocument.create();
-                         templatePdfDoc.addPage([595.28, 841.89]); // A4 fallback
-                    }
-                    
-                    const copiedPages = await outPdf.copyPages(templatePdfDoc, templatePdfDoc.getPageIndices());
-                    const startIdx = outPdf.getPageCount();
-                    copiedPages.forEach(p => outPdf.addPage(p));
-                    
-                    const allPages = outPdf.getPages();
-                    
-                    // Draw visually descriptive labels to output document instances
-                    Object.keys(doc.data || {}).forEach(field => {
-                         const metas = doc.meta && doc.meta[field];
-                         if (!metas || !Array.isArray(metas)) return;
-                         
-                         metas.forEach(meta => {
-                             if (typeof meta.x === 'number' && !isNaN(meta.x) && typeof meta.y === 'number' && !isNaN(meta.y)) {
-                                  const pageOffset = Math.max(0, (parseInt(meta.page) || 1) - 1);
-                                  const targetIdx = startIdx + pageOffset;
-                                  
-                                  if (targetIdx < allPages.length && font) {
-                                       const page = allPages[targetIdx];
-                                       const { height: pageH } = page.getSize();
-                                       
-                                       const w = meta.width || 80;
-                                       const h = meta.height || 16;
-                                       // Convert top-left (y) to pdf-lib bottom-left
-                                       const pdfY = pageH - meta.y - h;
-                                       
-                                       // Draw Bounding Box indicator
-                                       page.drawRectangle({
-                                           x: meta.x,
-                                           y: pdfY,
-                                           width: w,
-                                           height: h,
-                                           borderColor: rgb(0.9, 0.1, 0.1),
-                                           borderWidth: 1,
-                                           color: rgb(0.98, 0.9, 0.9)
-                                       });
-                                       
-                                       // Draw Value
-                                       page.drawText(String(meta.value || ''), {
-                                           x: meta.x + 2,
-                                           y: pdfY + 4, 
-                                           font: font,
-                                           size: 10,
-                                           color: rgb(0.7, 0, 0)
-                                       });
-                                       
-                                       // Draw Field_Code Label above the box
-                                       page.drawText(`[${field}]`, {
-                                           x: meta.x,
-                                           y: pdfY + h + 2,
-                                           font: font,
-                                           size: 8,
-                                           color: rgb(0.1, 0.1, 0.8)
-                                       });
-                                  }
-                             }
-                         });
-                    });
+                const template = DocumentStore.uploadedTemplates.find(t => t.id === doc.templateId);
+                
+                let templatePdfDoc;
+                if (template && template._file) {
+                     const arrayBuffer = await new Promise((resolve, reject) => {
+                         const r = new FileReader();
+                         r.onload = e => resolve(e.target.result);
+                         r.onerror = e => reject(new Error('FileReader Error'));
+                         r.readAsArrayBuffer(template._file);
+                     });
+                     templatePdfDoc = await PDFDocument.load(arrayBuffer);
+                } else {
+                     templatePdfDoc = await PDFDocument.create();
+                     templatePdfDoc.addPage([595.28, 841.89]); // A4 fallback
                 }
                 
+                const copiedPages = await outPdf.copyPages(templatePdfDoc, templatePdfDoc.getPageIndices());
+                const startIdx = outPdf.getPageCount();
+                copiedPages.forEach(p => outPdf.addPage(p));
+                
+                const allPages = outPdf.getPages();
+                
+                // Draw visually descriptive labels to output document instances
+                Object.keys(doc.data || {}).forEach(field => {
+                     const metas = doc.meta && doc.meta[field];
+                     if (!metas || !Array.isArray(metas)) return;
+                     
+                     metas.forEach(meta => {
+                         if (typeof meta.x === 'number' && !isNaN(meta.x) && typeof meta.y === 'number' && !isNaN(meta.y)) {
+                              const pageOffset = Math.max(0, (parseInt(meta.page) || 1) - 1);
+                              const targetIdx = startIdx + pageOffset;
+                              
+                              if (targetIdx < allPages.length && font) {
+                                   const page = allPages[targetIdx];
+                                   const { height: pageH } = page.getSize();
+                                   
+                                   const w = meta.width || 80;
+                                   const h = meta.height || 16;
+                                   // Convert top-left (y) to pdf-lib bottom-left
+                                   const pdfY = pageH - meta.y - h;
+                                   
+                                   // Draw Bounding Box indicator
+                                   page.drawRectangle({
+                                       x: meta.x,
+                                       y: pdfY,
+                                       width: w,
+                                       height: h,
+                                       borderColor: rgb(0.9, 0.1, 0.1),
+                                       borderWidth: 1,
+                                       color: rgb(0.98, 0.9, 0.9)
+                                   });
+                                   
+                                   // Draw Value
+                                   page.drawText(String(meta.value || ''), {
+                                       x: meta.x + 2,
+                                       y: pdfY + 4, 
+                                       font: font,
+                                       size: 10,
+                                       color: rgb(0.7, 0, 0)
+                                   });
+                                   
+                                   // Draw Field_Code Label above the box
+                                   page.drawText(`[${field}]`, {
+                                       x: meta.x,
+                                       y: pdfY + h + 2,
+                                       font: font,
+                                       size: 8,
+                                       color: rgb(0.1, 0.1, 0.8)
+                                   });
+                              }
+                         }
+                     });
+                });
+                
                 const pdfBytes = await outPdf.save();
-                zip.file(`case_${caseId.replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`, pdfBytes);
+                
+                // Add to ZIP under a folder named by case_id
+                const safeCaseId = caseId.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+                const safeDocInstance = docInstance.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+                zip.folder(safeCaseId).file(`${safeDocInstance}.pdf`, pdfBytes);
             }
 
             const zipBlob = await zip.generateAsync({ type: "blob" });
             const url = URL.createObjectURL(zipBlob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'generated_structured_documents.zip';
+            a.download = 'business_documents_archive.zip';
             a.click();
             
             setTimeout(() => URL.revokeObjectURL(url), 1000);
-            return 'generated_structured_documents.zip';
+            return 'business_documents_archive.zip';
         } catch (e) {
-            alert("Error generating PDF Batch: " + e.message + "\n" + (e.stack ? e.stack.substring(0, 300) : ""));
+            alert("Error generating PDF Archive: " + e.message + "\n" + (e.stack ? e.stack.substring(0, 300) : ""));
             throw e;
         }
     },
