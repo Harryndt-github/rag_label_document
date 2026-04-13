@@ -84,24 +84,80 @@ const DocumentStore = {
     },
 
     // Generate randomized data based on a field schema
-    generateRandomValue(field) {
-        const companies = ['ACME Corp', 'NextGen Solutions', 'TechVista Inc', 'Global Dynamics', 'Pinnacle Labs', 'BlueStar Holdings', 'RedPoint Systems', 'OmniTech Group'];
-        const clients = ['Alpha Industries', 'Beta Solutions', 'Gamma Tech', 'Delta Corp', 'Epsilon LLC', 'Zeta Holdings', 'Eta Partners', 'Theta Consulting'];
+    generateRandomValue(fieldCode) {
         const rndInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-        const rndAmount = (min, max) => '$' + (Math.random() * (max - min) + min).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        const rndAmount = (min, max) => (Math.random() * (max - min) + min).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
         const rndDate = () => { const d = new Date(2026, rndInt(0, 11), rndInt(1, 28)); return d.toISOString().split('T')[0]; };
+        const rndStr = (arr) => arr[rndInt(0, arr.length - 1)];
 
-        switch (field) {
-            case 'company_name': return companies[rndInt(0, companies.length - 1)];
-            case 'client_name': return clients[rndInt(0, clients.length - 1)];
-            case 'invoice_number': return `INV-2026-${String(rndInt(1, 12)).padStart(2, '0')}-${String(rndInt(1, 9999)).padStart(4, '0')}`;
-            case 'po_number': return `PO-${rndInt(10000, 99999)}`;
-            case 'invoice_date': case 'due_date': return rndDate();
-            case 'subtotal': return rndAmount(1000, 50000);
-            case 'tax': return rndAmount(100, 5000);
-            case 'total': return rndAmount(1100, 55000);
-            default: return `Value_${rndInt(1000, 9999)}`;
-        }
+        const companies = ['ACME Corp', 'NextGen Solutions', 'TechVista Inc', 'Global Dynamics', 'Pinnacle Labs', 'BlueStar Holdings', 'RedPoint Systems', 'OmniTech Group', 'Sunrise Holdings', 'Pacific Trade Co'];
+        const names = ['Nguyen Van A', 'Tran Thi B', 'Le Van C', 'Pham D', 'Hoang E', 'Vo F', 'Bui G', 'Dang H'];
+        const cities = ['Ho Chi Minh City', 'Ha Noi', 'Da Nang', 'Can Tho', 'Hai Phong', 'Nha Trang', 'Hue', 'Vung Tau'];
+        const countries = ['Vietnam', 'Japan', 'USA', 'Korea', 'Singapore', 'Thailand', 'Germany', 'Australia'];
+        const products = ['Electronic Components', 'Textile Materials', 'Agricultural Products', 'Machinery Parts', 'Chemical Reagents', 'Medical Supplies', 'IT Equipment', 'Food & Beverage'];
+        const ports = ['Cat Lai', 'Hai Phong', 'Da Nang', 'Qui Nhon', 'Cai Mep', 'Yokohama', 'Busan', 'Shanghai'];
+        const vessels = ['MV OCEAN STAR', 'MV PACIFIC GLORY', 'MV MEKONG TRADER', 'MV SAIGON EXPRESS', 'MV DRAGON PEARL', 'MV BLUE HORIZON'];
+
+        const fc = fieldCode.toLowerCase().replace(/[\s\-]/g, '_');
+
+        // Company / Organization patterns
+        if (fc.includes('company') || fc.includes('shipper') || fc.includes('consignee') || fc.includes('exporter') || fc.includes('importer') || fc.includes('buyer') || fc.includes('seller'))
+            return rndStr(companies);
+        // Person name patterns
+        if (fc.includes('name') || fc.includes('contact') || fc.includes('person') || fc.includes('representative'))
+            return rndStr(names);
+        // Invoice / Document numbers
+        if (fc.includes('invoice') && (fc.includes('no') || fc.includes('number') || fc.includes('num')))
+            return `INV-${rndInt(2025,2026)}-${String(rndInt(1,12)).padStart(2,'0')}-${String(rndInt(1,9999)).padStart(4,'0')}`;
+        if (fc.includes('bl') || fc.includes('bill_of_lading') || fc.includes('b_l'))
+            return `BL-${rndStr(['HCM','HAN','DNG'])}${rndInt(100000,999999)}`;
+        if (fc.includes('container') && (fc.includes('no') || fc.includes('number')))
+            return `${rndStr(['MSCU','HLXU','CMAU','OOLU'])}${rndInt(1000000,9999999)}`;
+        if (fc.includes('po') || fc.includes('purchase_order'))
+            return `PO-${rndInt(10000, 99999)}`;
+        if (fc.includes('declaration') || fc.includes('customs') || fc.includes('tkhq'))
+            return `${rndInt(100,999)}${String(rndInt(1,50)).padStart(3,'0')}/${rndStr(['HCM','HAN'])}/${rndInt(2025,2026)}`;
+        if (fc.includes('ref') || fc.includes('reference') || fc.includes('number') || fc.includes('no') || fc.includes('code') || fc.includes('id'))
+            return `${fc.substring(0,3).toUpperCase()}-${rndInt(100000,999999)}`;
+        // Date patterns
+        if (fc.includes('date') || fc.includes('ngay') || fc.includes('issued') || fc.includes('created') || fc.includes('etd') || fc.includes('eta'))
+            return rndDate();
+        // Amount / Price / Weight patterns
+        if (fc.includes('amount') || fc.includes('total') || fc.includes('subtotal') || fc.includes('price') || fc.includes('value') || fc.includes('cost'))
+            return rndAmount(1000, 500000);
+        if (fc.includes('tax') || fc.includes('vat'))
+            return rndAmount(100, 50000);
+        if (fc.includes('weight') || fc.includes('gross') || fc.includes('net'))
+            return `${rndAmount(100, 50000)} KG`;
+        if (fc.includes('quantity') || fc.includes('qty') || fc.includes('pcs'))
+            return String(rndInt(1, 10000));
+        // Location patterns
+        if (fc.includes('city') || fc.includes('province') || fc.includes('tinh'))
+            return rndStr(cities);
+        if (fc.includes('country') || fc.includes('origin') || fc.includes('destination') || fc.includes('quoc_gia'))
+            return rndStr(countries);
+        if (fc.includes('port') || fc.includes('cang'))
+            return rndStr(ports);
+        if (fc.includes('address') || fc.includes('dia_chi'))
+            return `${rndInt(1,999)} ${rndStr(['Nguyen Hue','Le Loi','Tran Hung Dao','Vo Van Kiet','Hai Ba Trung'])}, ${rndStr(cities)}`;
+        // Vessel / Transport
+        if (fc.includes('vessel') || fc.includes('tau') || fc.includes('ship'))
+            return rndStr(vessels);
+        if (fc.includes('voyage'))
+            return `V.${rndInt(100,999)}${rndStr(['E','W','N','S'])}`;
+        // Product / Description
+        if (fc.includes('product') || fc.includes('description') || fc.includes('goods') || fc.includes('commodity') || fc.includes('hang_hoa'))
+            return rndStr(products);
+        if (fc.includes('currency') || fc.includes('tien'))
+            return rndStr(['USD', 'VND', 'EUR', 'JPY', 'KRW']);
+        if (fc.includes('unit') || fc.includes('don_vi'))
+            return rndStr(['KG', 'PCS', 'SET', 'CTN', 'PKG', 'M3']);
+        if (fc.includes('term') || fc.includes('incoterm'))
+            return rndStr(['FOB', 'CIF', 'CNF', 'CFR', 'EXW', 'DDP']);
+        if (fc.includes('payment') || fc.includes('thanh_toan'))
+            return rndStr(['T/T', 'L/C', 'D/P', 'D/A', 'Cash']);
+        // Fallback: generate a plausible alphanumeric value
+        return `${fieldCode.substring(0, Math.min(fieldCode.length, 4)).toUpperCase()}_${rndInt(1000, 9999)}`;
     }
 };
 
@@ -1629,14 +1685,39 @@ const GeneratePage = {
         if (!this.csvData) return;
         let newFields = [];
         if (this.csvData.headers.includes('field_code') && this.csvData.headers.includes('value')) {
-             const uniqueCodes = [...new Set(this.csvData.rows.map(r => r.field_code).filter(Boolean))];
-             newFields = uniqueCodes.map(code => ({ field: code, label: code, type: 'Alphanumeric' }));
+             // Build master schema from first complete document_instance
+             // Find the first document_instance and collect ALL its field_codes with coordinates
+             const firstDocGroup = {};
+             let firstDocKey = null;
+             for (const r of this.csvData.rows) {
+                 const caseId = r.case_id || 'case_unknown';
+                 const docInst = r.document_instance || r.file_name || 'doc_unknown';
+                 const key = `${caseId}___${docInst}`;
+                 if (!firstDocKey) firstDocKey = key;
+                 if (key !== firstDocKey) continue;
+                 if (r.field_code && !firstDocGroup[r.field_code]) {
+                     firstDocGroup[r.field_code] = {
+                         x: parseFloat(r.x) || 0,
+                         y: parseFloat(r.y) || 0,
+                         width: parseFloat(r.width) || 80,
+                         height: parseFloat(r.height) || 16,
+                         page: parseInt(r.page) || 1
+                     };
+                 }
+             }
+             // Store master schema for generation
+             this._masterFieldSchema = firstDocGroup;
+             newFields = Object.keys(firstDocGroup).map(code => ({
+                 field: code, label: code, type: 'Alphanumeric'
+             }));
         } else {
              newFields = this.csvData.headers.map(h => ({ field: h, label: h, type: 'Alphanumeric' }));
         }
         DocumentStore.ocrData = newFields;
         this.updateTemplateInfo();
     },
+
+    _masterFieldSchema: null,
 
     startGeneration() {
         if (this.isGenerating) return;
@@ -1678,49 +1759,17 @@ const GeneratePage = {
         const generatedDocs = [];
         let current = 0;
 
-        // Normalize CSV/Excel data to a list of row objects for generation
-        let normalizedData = [];
-        if ((dataSource === 'CSV Upload' || dataSource === 'Excel Upload') && this.csvData) {
-            if (this.csvData.headers.includes('field_code') && this.csvData.headers.includes('value')) {
-                // Long format: group by case_id AND document_instance to separate document sets
-                const grouped = {};
-                this.csvData.rows.forEach(r => {
-                    const caseId = r.case_id || 'case_unknown';
-                    const docInstance = r.document_instance || r.file_name || 'doc_unknown';
-                    const id = `${caseId}___${docInstance}`;
-                    
-                    if (!grouped[id]) {
-                        grouped[id] = { caseId, docInstance, fields: {} };
-                    }
-                    if (!grouped[id].fields[r.field_code]) {
-                        grouped[id].fields[r.field_code] = [];
-                    }
-                    grouped[id].fields[r.field_code].push({
-                        value: r.value,
-                        x: parseFloat(r.x),
-                        y: parseFloat(r.y),
-                        width: parseFloat(r.width) || 80,
-                        height: parseFloat(r.height) || 16,
-                        page: parseInt(r.page) || 1,
-                        rotation: parseFloat(r.rotation) || 0
-                    });
-                });
-                normalizedData = Object.values(grouped);
-            } else {
-                // Wide format
-                normalizedData = this.csvData.rows.map(r => ({ caseId: 'N/A', docInstance: 'N/A', fields: r }));
-            }
-        }
+        // Build generation data:
+        // If master schema exists (from imported data), use it as layout blueprint
+        // and generate NEW synthetic values for each case_id
+        const masterSchema = this._masterFieldSchema;
+        const actualCount = requestedCount;
 
-        // Use ALL rows from imported data (each row = unique case_id + document_instance)
-        // If no data imported, fall back to the requested count
-        const actualCount = normalizedData.length > 0 ? normalizedData.length : requestedCount;
-
-        if (normalizedData.length > 0) {
-            const uniqueCases = [...new Set(normalizedData.map(r => r.caseId))];
-            this._log(log, `Found ${normalizedData.length} document instances across ${uniqueCases.length} case_id(s)`, 'info');
+        if (masterSchema && Object.keys(masterSchema).length > 0) {
+            this._log(log, `Master Labels: ${Object.keys(masterSchema).length} field_code(s) — ${Object.keys(masterSchema).join(', ')}`, 'info');
+            this._log(log, `Generating ${actualCount} unique case_id(s), each with all ${Object.keys(masterSchema).length} fields`, 'info');
         } else {
-            this._log(log, `No imported data — generating ${actualCount} documents with random values`, 'info');
+            this._log(log, `No master schema — generating ${actualCount} documents with ${fields.length} random fields`, 'info');
         }
 
         const interval = setInterval(() => {
@@ -1729,33 +1778,29 @@ const GeneratePage = {
             fill.style.width = pct + '%';
             countEl.textContent = `${current} / ${actualCount}`;
 
-            // Generate actual document data for each document instance
             const docData = {};
             const docMeta = {};
-            let rowCaseId = '';
-            let rowDocInstance = '';
+            let rowCaseId = `CASE_${String(current).padStart(4, '0')}`;
+            let rowDocInstance = `DOC_${String(current).padStart(3, '0')}`;
 
-            if (normalizedData.length > 0) {
-                const row = normalizedData[(current - 1) % normalizedData.length];
-                rowCaseId = row.caseId || '';
-                rowDocInstance = row.docInstance || '';
-
-                if (row.caseId !== 'N/A') {
-                    // Long format assignments
-                    Object.keys(row.fields).forEach(fc => {
-                        const cellArray = row.fields[fc];
-                        docData[fc] = cellArray.map(c => c.value).join(', ');
-                        docMeta[fc] = cellArray;
-                    });
-                } else {
-                    // Wide format assignments
-                    fields.forEach(f => {
-                        const cell = row.fields[f.label] || row.fields[f.field];
-                        docData[f.field] = cell !== undefined ? String(cell) : '';
-                        docMeta[f.field] = [{ value: cell }]; // Wrap in array for compatibility
-                    });
-                }
+            if (masterSchema && Object.keys(masterSchema).length > 0) {
+                // Generate a new document using master schema layout + new synthetic values
+                Object.keys(masterSchema).forEach(fc => {
+                    const coord = masterSchema[fc];
+                    const syntheticValue = DocumentStore.generateRandomValue(fc);
+                    docData[fc] = syntheticValue;
+                    docMeta[fc] = [{
+                        value: syntheticValue,
+                        x: coord.x,
+                        y: coord.y,
+                        width: coord.width,
+                        height: coord.height,
+                        page: coord.page,
+                        rotation: 0
+                    }];
+                });
             } else {
+                // Fallback: no imported data, use ocrData fields
                 fields.forEach(f => {
                     docData[f.field] = DocumentStore.generateRandomValue(f.field);
                 });
