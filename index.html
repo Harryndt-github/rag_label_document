@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Insight Ledger — Document Automation & OCR Platform</title>
+    <meta name="description" content="Enterprise-grade document intelligence platform for OCR processing, template generation, and automated data extraction.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <!-- ═══════════════════════════════════════════ -->
+    <!--  SIDEBAR NAVIGATION                        -->
+    <!-- ═══════════════════════════════════════════ -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo-icon" id="logo-icon">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                    <rect x="2" y="2" width="10" height="10" rx="2" fill="#0453CD"/>
+                    <rect x="16" y="2" width="10" height="10" rx="2" fill="#0453CD" opacity="0.6"/>
+                    <rect x="2" y="16" width="10" height="10" rx="2" fill="#0453CD" opacity="0.4"/>
+                    <rect x="16" y="16" width="10" height="10" rx="2" fill="#0453CD" opacity="0.8"/>
+                </svg>
+            </div>
+            <span class="logo-text">Insight Ledger</span>
+        </div>
+
+        <nav class="sidebar-nav">
+            <div class="nav-section-label">MAIN</div>
+            <button class="nav-item active" data-page="dashboard" id="nav-dashboard">
+                <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="2" y="2" width="7" height="7" rx="1.5"/>
+                    <rect x="11" y="2" width="7" height="7" rx="1.5"/>
+                    <rect x="2" y="11" width="7" height="7" rx="1.5"/>
+                    <rect x="11" y="11" width="7" height="7" rx="1.5"/>
+                </svg>
+                <span class="nav-label">Dashboard</span>
+            </button>
+            <button class="nav-item" data-page="import" id="nav-import">
+                <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M10 2v12M6 10l4 4 4-4"/>
+                    <path d="M3 15v2a1 1 0 001 1h12a1 1 0 001-1v-2"/>
+                </svg>
+                <span class="nav-label">Import & Config</span>
+            </button>
+
+            <div class="nav-section-label">DATA</div>
+            <button class="nav-item" data-page="labels" id="nav-labels">
+                <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M2 5a2 2 0 012-2h5.586a1 1 0 01.707.293l7.414 7.414a1 1 0 010 1.414l-5.586 5.586a1 1 0 01-1.414 0L2.293 10.293A1 1 0 012 9.586V5z"/>
+                    <circle cx="6" cy="6" r="1"/>
+                </svg>
+                <span class="nav-label">Master Labels</span>
+            </button>
+            <button class="nav-item" data-page="ocr" id="nav-ocr">
+                <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M2 4h4M14 4h4M2 4v4M18 4v4M2 16v-4M18 16v-4M2 16h4M14 16h4"/>
+                    <path d="M7 8h6M7 10h4M7 12h5"/>
+                </svg>
+                <span class="nav-label">OCR Preview</span>
+            </button>
+
+            <div class="nav-section-label">TOOLS</div>
+            <button class="nav-item" data-page="generate" id="nav-generate">
+                <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M4 4h8l4 4v10a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z"/>
+                    <path d="M12 4v4h4"/>
+                    <path d="M8 12l2 2 4-4"/>
+                </svg>
+                <span class="nav-label">Generate</span>
+            </button>
+            <button class="nav-item" data-page="export" id="nav-export">
+                <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M10 14V2M6 6l4-4 4 4"/>
+                    <path d="M3 15v2a1 1 0 001 1h12a1 1 0 001-1v-2"/>
+                </svg>
+                <span class="nav-label">Export</span>
+            </button>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="sidebar-collapse-btn" id="sidebar-toggle" aria-label="Toggle sidebar">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M10 3L5 8l5 5"/>
+                </svg>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!--  MAIN CONTENT WRAPPER                      -->
+    <!-- ═══════════════════════════════════════════ -->
+    <main class="main-content" id="main-content">
+        <!-- TOP BAR -->
+        <header class="topbar" id="topbar">
+            <div class="topbar-left">
+                <h1 class="page-title" id="page-title">Dashboard</h1>
+                <span class="page-breadcrumb" id="page-breadcrumb">Home / Dashboard</span>
+            </div>
+            <div class="topbar-right">
+                <div class="search-box" id="search-box">
+                    <svg class="search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <circle cx="7" cy="7" r="5"/>
+                        <path d="M11 11l3.5 3.5"/>
+                    </svg>
+                    <input type="text" placeholder="Search projects, labels..." id="search-input" aria-label="Search projects and labels">
+                </div>
+                <button class="topbar-btn" id="notifications-btn" aria-label="Notifications">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M13.73 13A7.39 7.39 0 0015 9.27V8a6 6 0 10-12 0v1.27A7.39 7.39 0 014.27 13H2v1h14v-1h-2.27z"/>
+                        <path d="M7 15a2 2 0 004 0"/>
+                    </svg>
+                    <span class="notification-dot"></span>
+                </button>
+                <div class="profile-avatar" id="profile-avatar" aria-label="User profile">
+                    <span>NL</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ══════════════════════════════════════ -->
+        <!--  PAGE: DASHBOARD                      -->
+        <!-- ══════════════════════════════════════ -->
+        <section class="page active" id="page-dashboard">
+            <!-- KPI CARDS -->
+            <div class="kpi-row">
+                <div class="kpi-card" id="kpi-total-processed">
+                    <div class="kpi-icon kpi-icon--blue">
+                        <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M4 4h10l4 4v10a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2z"/>
+                            <path d="M14 4v4h4"/>
+                        </svg>
+                    </div>
+                    <div class="kpi-data">
+                        <span class="kpi-value" data-target="12487">0</span>
+                        <span class="kpi-label">Total Processed</span>
+                    </div>
+                    <div class="kpi-trend kpi-trend--up">
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8l3-3 2 2 4-4"/><path d="M8 3h3v3"/></svg>
+                        <span>+12.4%</span>
+                    </div>
+                </div>
+                <div class="kpi-card" id="kpi-accuracy">
+                    <div class="kpi-icon kpi-icon--green">
+                        <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <circle cx="11" cy="11" r="9"/>
+                            <path d="M7 11l3 3 5-5"/>
+                        </svg>
+                    </div>
+                    <div class="kpi-data">
+                        <span class="kpi-value kpi-value--percent" data-target="97.3">0</span>
+                        <span class="kpi-label">Accuracy Rate</span>
+                    </div>
+                    <div class="kpi-trend kpi-trend--up">
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8l3-3 2 2 4-4"/><path d="M8 3h3v3"/></svg>
+                        <span>+2.1%</span>
+                    </div>
+                </div>
+                <div class="kpi-card" id="kpi-queue">
+                    <div class="kpi-icon kpi-icon--amber">
+                        <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <rect x="3" y="5" width="16" height="3" rx="1"/>
+                            <rect x="3" y="10" width="16" height="3" rx="1"/>
+                            <rect x="3" y="15" width="16" height="3" rx="1"/>
+                        </svg>
+                    </div>
+                    <div class="kpi-data">
+                        <span class="kpi-value" data-target="34">0</span>
+                        <span class="kpi-label">Queue Status</span>
+                    </div>
+                    <div class="kpi-trend kpi-trend--down">
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4l3 3 2-2 4 4"/><path d="M8 9h3V6"/></svg>
+                        <span>-8.2%</span>
+                    </div>
+                </div>
+                <div class="kpi-card" id="kpi-projects">
+                    <div class="kpi-icon kpi-icon--purple">
+                        <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M3 7l8-5 8 5v8l-8 5-8-5V7z"/>
+                            <path d="M3 7l8 5M11 22V12M19 7l-8 5"/>
+                        </svg>
+                    </div>
+                    <div class="kpi-data">
+                        <span class="kpi-value" data-target="8">0</span>
+                        <span class="kpi-label">Active Projects</span>
+                    </div>
+                    <div class="kpi-trend kpi-trend--neutral">
+                        <span>Stable</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DASHBOARD GRID -->
+            <div class="dashboard-grid">
+                <!-- RECENT PROJECTS TABLE -->
+                <div class="card card--wide" id="recent-projects-card">
+                    <div class="card-header">
+                        <h2 class="card-title">Recent Projects</h2>
+                        <div class="card-actions">
+                            <select class="filter-select" id="project-filter" aria-label="Filter projects">
+                                <option>All Status</option>
+                                <option>Completed</option>
+                                <option>Processing</option>
+                                <option>Queued</option>
+                            </select>
+                            <button class="btn btn--sm btn--ghost" id="view-all-projects">View All</button>
+                        </div>
+                    </div>
+                    <div class="table-wrapper">
+                        <table class="data-table" id="projects-table">
+                            <thead>
+                                <tr>
+                                    <th>Project Name</th>
+                                    <th>Created</th>
+                                    <th>Documents</th>
+                                    <th>Accuracy</th>
+                                    <th>Status</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="projects-tbody">
+                                <!-- JS populated -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- DATA HEALTH CHART -->
+                <div class="card card--chart" id="data-health-card">
+                    <div class="card-header">
+                        <h2 class="card-title">Data Health</h2>
+                        <div class="card-actions">
+                            <div class="chip-group">
+                                <button class="chip active" data-range="7d" id="chart-7d">7D</button>
+                                <button class="chip" data-range="30d" id="chart-30d">30D</button>
+                                <button class="chip" data-range="90d" id="chart-90d">90D</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chart-container" id="throughput-chart">
+                        <canvas id="throughput-canvas"></canvas>
+                    </div>
+                    <div class="chart-legend">
+                        <span class="legend-item"><span class="legend-dot legend-dot--blue"></span>Processed</span>
+                        <span class="legend-item"><span class="legend-dot legend-dot--green"></span>Validated</span>
+                        <span class="legend-item"><span class="legend-dot legend-dot--amber"></span>Errors</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ══════════════════════════════════════ -->
+        <!--  PAGE: IMPORT & CONFIGURATION         -->
+        <!-- ══════════════════════════════════════ -->
+        <section class="page" id="page-import">
+            <!-- WIZARD STEPPER -->
+            <div class="wizard-stepper" id="wizard-stepper">
+                <div class="step active" data-step="1" id="step-1-indicator">
+                    <div class="step-circle">1</div>
+                    <span class="step-label">Upload</span>
+                </div>
+                <div class="step-line active"></div>
+                <div class="step" data-step="2" id="step-2-indicator">
+                    <div class="step-circle">2</div>
+                    <span class="step-label">Configure</span>
+                </div>
+                <div class="step-line"></div>
+                <div class="step" data-step="3" id="step-3-indicator">
+                    <div class="step-circle">3</div>
+                    <span class="step-label">Mapping</span>
+                </div>
+                <div class="step-line"></div>
+                <div class="step" data-step="4" id="step-4-indicator">
+                    <div class="step-circle">4</div>
+                    <span class="step-label">Review</span>
+                </div>
+            </div>
+
+            <!-- WIZARD STEPS CONTENT -->
+            <div class="wizard-content">
+                <!-- Step 1: Upload -->
+                <div class="wizard-step active" id="wizard-step-1">
+                    <div class="upload-zone" id="upload-zone">
+                        <div class="upload-zone-inner">
+                            <div class="upload-icon-ring">
+                                <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M24 32V16M18 22l6-6 6 6"/>
+                                    <path d="M8 32v6a2 2 0 002 2h28a2 2 0 002-2v-6"/>
+                                </svg>
+                            </div>
+                            <h3 class="upload-title">Drop your documents here</h3>
+                            <p class="upload-subtitle">or <span class="upload-browse" id="upload-browse">browse files</span> from your computer</p>
+                            <p class="upload-formats">Supported: PDF, JPG, PNG, TIFF — Max 50MB per file</p>
+                            <input type="file" id="file-input" accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif" multiple hidden aria-label="File upload">
+                        </div>
+                    </div>
+                    <div class="upload-file-list" id="upload-file-list">
+                        <!-- JS populated -->
+                    </div>
+                </div>
+
+                <!-- Step 2: Configure -->
+                <div class="wizard-step" id="wizard-step-2">
+                    <div class="config-layout">
+                        <div class="config-main">
+                            <div class="card">
+                                <div class="card-header"><h2 class="card-title">Document Preview</h2></div>
+                                <div class="document-preview" id="document-preview">
+                                    <div class="preview-placeholder">
+                                        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3">
+                                            <rect x="8" y="4" width="48" height="56" rx="4"/>
+                                            <path d="M16 16h32M16 24h24M16 32h28M16 40h20"/>
+                                        </svg>
+                                        <p>Document preview will appear here</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="config-sidebar">
+                            <div class="card">
+                                <div class="card-header"><h2 class="card-title">Extraction Settings</h2></div>
+                                <div class="config-group">
+                                    <label class="config-label">AI Model Precision</label>
+                                    <div class="radio-cards" id="precision-selector">
+                                        <label class="radio-card" id="precision-fast">
+                                            <input type="radio" name="precision" value="fast">
+                                            <div class="radio-card-body">
+                                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L5 11h5l-2 7 8-9h-5l2-7z"/></svg>
+                                                <span class="radio-card-title">Fast</span>
+                                                <span class="radio-card-desc">~2s / page</span>
+                                            </div>
+                                        </label>
+                                        <label class="radio-card active" id="precision-balanced">
+                                            <input type="radio" name="precision" value="balanced" checked>
+                                            <div class="radio-card-body">
+                                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="8"/><path d="M10 6v4l3 3"/></svg>
+                                                <span class="radio-card-title">Balanced</span>
+                                                <span class="radio-card-desc">~5s / page</span>
+                                            </div>
+                                        </label>
+                                        <label class="radio-card" id="precision-ultra">
+                                            <input type="radio" name="precision" value="ultra">
+                                            <div class="radio-card-body">
+                                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="2"/><circle cx="10" cy="10" r="5"/><circle cx="10" cy="10" r="8"/></svg>
+                                                <span class="radio-card-title">Ultra</span>
+                                                <span class="radio-card-desc">~12s / page</span>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="config-group">
+                                    <div class="toggle-row">
+                                        <label class="config-label" for="handwriting-toggle">Handwriting OCR</label>
+                                        <label class="toggle" id="handwriting-toggle-label">
+                                            <input type="checkbox" id="handwriting-toggle">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <p class="config-hint">Enable for documents with handwritten fields</p>
+                                </div>
+                                <div class="config-group">
+                                    <div class="toggle-row">
+                                        <label class="config-label" for="auto-validate-toggle">Auto-validate Fields</label>
+                                        <label class="toggle" id="auto-validate-toggle-label">
+                                            <input type="checkbox" id="auto-validate-toggle" checked>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <p class="config-hint">Automatically verify extracted data against rules</p>
+                                </div>
+                                <div class="config-group">
+                                    <label class="config-label" for="language-select">Document Language</label>
+                                    <select class="config-select" id="language-select">
+                                        <option>English</option>
+                                        <option>Vietnamese</option>
+                                        <option>Japanese</option>
+                                        <option>Korean</option>
+                                        <option>Chinese (Simplified)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3: Mapping -->
+                <div class="wizard-step" id="wizard-step-3">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="card-title">Field Mapping</h2>
+                            <p class="card-subtitle">Map source columns from your document to target database fields</p>
+                        </div>
+                        <div class="mapping-table-wrapper">
+                            <table class="data-table mapping-table" id="mapping-table">
+                                <thead>
+                                    <tr>
+                                        <th>Source Column</th>
+                                        <th class="mapping-arrow-col"></th>
+                                        <th>Target Field</th>
+                                        <th>Data Type</th>
+                                        <th>Confidence</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="mapping-tbody">
+                                    <!-- JS populated -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="mapping-actions">
+                            <button class="btn btn--sm btn--outline" id="add-mapping-btn">
+                                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 2v10M2 7h10"/></svg>
+                                Add Mapping
+                            </button>
+                            <button class="btn btn--sm btn--ghost" id="auto-detect-btn">Auto-detect Fields</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 4: Review -->
+                <div class="wizard-step" id="wizard-step-4">
+                    <div class="review-grid">
+                        <div class="card review-summary-card">
+                            <div class="card-header"><h2 class="card-title">Configuration Summary</h2></div>
+                            <div class="review-list" id="review-summary-list">
+                                <div class="review-item">
+                                    <span class="review-label">Files</span>
+                                    <span class="review-value" id="review-files">3 documents</span>
+                                </div>
+                                <div class="review-item">
+                                    <span class="review-label">AI Precision</span>
+                                    <span class="review-value" id="review-precision">Balanced</span>
+                                </div>
+                                <div class="review-item">
+                                    <span class="review-label">Handwriting OCR</span>
+                                    <span class="review-value" id="review-handwriting">Disabled</span>
+                                </div>
+                                <div class="review-item">
+                                    <span class="review-label">Auto-validate</span>
+                                    <span class="review-value" id="review-autovalidate">Enabled</span>
+                                </div>
+                                <div class="review-item">
+                                    <span class="review-label">Language</span>
+                                    <span class="review-value" id="review-language">English</span>
+                                </div>
+                                <div class="review-item">
+                                    <span class="review-label">Mapped Fields</span>
+                                    <span class="review-value" id="review-fields">6 fields</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card review-estimate-card">
+                            <div class="card-header"><h2 class="card-title">Processing Estimate</h2></div>
+                            <div class="estimate-circle" id="estimate-circle">
+                                <svg viewBox="0 0 120 120">
+                                    <circle cx="60" cy="60" r="52" stroke="#E2E8F0" stroke-width="8" fill="none"/>
+                                    <circle cx="60" cy="60" r="52" stroke="#0453CD" stroke-width="8" fill="none" stroke-dasharray="327" stroke-dashoffset="82" stroke-linecap="round" class="estimate-progress"/>
+                                </svg>
+                                <div class="estimate-text">
+                                    <span class="estimate-value">~45s</span>
+                                    <span class="estimate-label">Est. Time</span>
+                                </div>
+                            </div>
+                            <div class="estimate-details">
+                                <div class="estimate-row"><span>Pages to process</span><span>12</span></div>
+                                <div class="estimate-row"><span>Expected accuracy</span><span>96.8%</span></div>
+                                <div class="estimate-row"><span>Credits used</span><span>24</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- WIZARD FOOTER -->
+            <div class="wizard-footer" id="wizard-footer">
+                <button class="btn btn--outline" id="wizard-back" disabled>Back</button>
+                <div class="wizard-step-indicator">
+                    <span id="wizard-step-text">Step 1 of 4</span>
+                </div>
+                <button class="btn btn--primary" id="wizard-next">Continue</button>
+            </div>
+        </section>
+
+        <!-- ══════════════════════════════════════ -->
+        <!--  PAGE: MASTER DATA LABELS             -->
+        <!-- ══════════════════════════════════════ -->
+        <section class="page" id="page-labels">
+            <!-- LABEL STATS -->
+            <div class="kpi-row kpi-row--3">
+                <div class="kpi-card" id="kpi-total-labels">
+                    <div class="kpi-icon kpi-icon--blue">
+                        <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M2 5a2 2 0 012-2h5.586a1 1 0 01.707.293l7.414 7.414a1 1 0 010 1.414l-5.586 5.586a1 1 0 01-1.414 0L2.293 10.293A1 1 0 012 9.586V5z"/>
+                            <circle cx="6" cy="6" r="1"/>
+                        </svg>
+                    </div>
+                    <div class="kpi-data">
+                        <span class="kpi-value" data-target="24">0</span>
+                        <span class="kpi-label">Total Labels</span>
+                    </div>
+                </div>
+                <div class="kpi-card" id="kpi-avg-confidence">
+                    <div class="kpi-icon kpi-icon--green">
+                        <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M11 2l2.5 5 5.5.8-4 3.9 1 5.3-5-2.6-5 2.6 1-5.3-4-3.9 5.5-.8z"/>
+                        </svg>
+                    </div>
+                    <div class="kpi-data">
+                        <span class="kpi-value kpi-value--percent" data-target="94.7">0</span>
+                        <span class="kpi-label">Avg. Confidence</span>
+                    </div>
+                </div>
+                <div class="kpi-card" id="kpi-active-usage">
+                    <div class="kpi-icon kpi-icon--purple">
+                        <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M16 8v6a4 4 0 01-4 4H10a4 4 0 01-4-4V8"/>
+                            <path d="M4 8h14"/>
+                            <path d="M8 4h6"/>
+                        </svg>
+                    </div>
+                    <div class="kpi-data">
+                        <span class="kpi-value" data-target="18">0</span>
+                        <span class="kpi-label">Active Usage</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LABELS TABLE -->
+            <div class="card" id="labels-card">
+                <div class="card-header">
+                    <h2 class="card-title">Schema Configuration</h2>
+                    <div class="card-actions">
+                        <button class="btn btn--sm btn--ghost" id="bulk-edit-btn">Bulk Edit</button>
+                        <button class="btn btn--sm btn--primary" id="add-label-btn">
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2v10M2 7h10"/></svg>
+                            Add New Label
+                        </button>
+                    </div>
+                </div>
+                <div class="table-wrapper">
+                    <table class="data-table" id="labels-table">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="label-select-all" aria-label="Select all labels"></th>
+                                <th>Label Name</th>
+                                <th>Data Type</th>
+                                <th>Confidence Threshold</th>
+                                <th>Tag</th>
+                                <th>Status</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="labels-tbody">
+                            <!-- JS populated -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ADD LABEL MODAL -->
+            <div class="modal-overlay" id="label-modal-overlay">
+                <div class="modal" id="label-modal" role="dialog" aria-modal="true" aria-labelledby="label-modal-title">
+                    <div class="modal-header">
+                        <h2 class="modal-title" id="label-modal-title">Add New Label</h2>
+                        <button class="modal-close" id="label-modal-close" aria-label="Close modal">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label class="form-label" for="label-name-input">Label Name</label>
+                            <input type="text" class="form-input" id="label-name-input" placeholder="e.g., Invoice Number">
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="label-type-select">Data Type</label>
+                                <select class="form-input" id="label-type-select">
+                                    <option>Alphanumeric</option>
+                                    <option>Date</option>
+                                    <option>Currency</option>
+                                    <option>Percentage</option>
+                                    <option>Integer</option>
+                                    <option>Text Block</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="label-tag-input">Identification Tag</label>
+                                <input type="text" class="form-input" id="label-tag-input" placeholder="e.g., INV_NUM">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Confidence Threshold</label>
+                            <div class="threshold-slider-wrap">
+                                <input type="range" class="threshold-slider" id="label-threshold-slider" min="50" max="100" value="85" aria-label="Confidence threshold">
+                                <span class="threshold-value" id="label-threshold-value">85%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn--outline" id="label-modal-cancel">Cancel</button>
+                        <button class="btn btn--primary" id="label-modal-save">Save Label</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ══════════════════════════════════════ -->
+        <!--  PAGE: OCR PREVIEW & SPLIT-VIEW       -->
+        <!-- ══════════════════════════════════════ -->
+        <section class="page" id="page-ocr">
+            <div class="ocr-toolbar" id="ocr-toolbar">
+                <div class="ocr-toolbar-left">
+                    <select class="config-select" id="ocr-document-select" aria-label="Select document">
+                        <option>Invoice_2024_001.pdf</option>
+                        <option>Receipt_ACME_Corp.pdf</option>
+                        <option>Contract_NDA_v2.pdf</option>
+                    </select>
+                    <span class="ocr-page-info" id="ocr-page-info">Page 1 of 3</span>
+                </div>
+                <div class="ocr-toolbar-right">
+                    <div class="ocr-zoom-controls">
+                        <button class="btn btn--icon" id="ocr-zoom-out" aria-label="Zoom out">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="M5 7h4M11 11l3.5 3.5"/></svg>
+                        </button>
+                        <span class="ocr-zoom-level" id="ocr-zoom-level">100%</span>
+                        <button class="btn btn--icon" id="ocr-zoom-in" aria-label="Zoom in">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="M7 5v4M5 7h4M11 11l3.5 3.5"/></svg>
+                        </button>
+                    </div>
+                    <button class="btn btn--sm btn--primary" id="ocr-save-btn">Save Changes</button>
+                </div>
+            </div>
+
+            <div class="ocr-split-view" id="ocr-split-view">
+                <!-- LEFT: Document Viewer -->
+                <div class="ocr-document-panel" id="ocr-document-panel">
+                    <div class="ocr-canvas-area" id="ocr-canvas-area">
+                        <!-- Simulated document with bounding boxes -->
+                        <div class="ocr-document-sim" id="ocr-document-sim">
+                            <div class="ocr-doc-header-sim">
+                                <div class="ocr-bbox ocr-bbox--high" data-field="company_name" style="top:28px;left:40px;width:220px;height:28px;" id="bbox-company"></div>
+                                <div class="ocr-bbox ocr-bbox--high" data-field="company_address" style="top:62px;left:40px;width:280px;height:18px;" id="bbox-address"></div>
+                                <div class="ocr-bbox ocr-bbox--high" data-field="invoice_title" style="top:110px;left:280px;width:140px;height:32px;" id="bbox-title"></div>
+                            </div>
+                            <div class="ocr-doc-body-sim">
+                                <div class="ocr-bbox ocr-bbox--high" data-field="invoice_number" style="top:162px;left:420px;width:160px;height:20px;" id="bbox-inv-num"></div>
+                                <div class="ocr-bbox ocr-bbox--high" data-field="invoice_date" style="top:188px;left:420px;width:140px;height:20px;" id="bbox-date"></div>
+                                <div class="ocr-bbox ocr-bbox--medium" data-field="due_date" style="top:214px;left:420px;width:140px;height:20px;" id="bbox-due-date"></div>
+                                <div class="ocr-bbox ocr-bbox--high" data-field="client_name" style="top:260px;left:40px;width:200px;height:20px;" id="bbox-client"></div>
+                                <div class="ocr-bbox ocr-bbox--low" data-field="po_number" style="top:286px;left:40px;width:180px;height:20px;" id="bbox-po"></div>
+                                <!-- Table area -->
+                                <div class="ocr-bbox ocr-bbox--high" data-field="line_items" style="top:330px;left:40px;width:520px;height:140px;" id="bbox-table"></div>
+                                <div class="ocr-bbox ocr-bbox--high" data-field="subtotal" style="top:490px;left:420px;width:140px;height:20px;" id="bbox-subtotal"></div>
+                                <div class="ocr-bbox ocr-bbox--medium" data-field="tax" style="top:516px;left:420px;width:140px;height:20px;" id="bbox-tax"></div>
+                                <div class="ocr-bbox ocr-bbox--high" data-field="total" style="top:546px;left:420px;width:140px;height:24px;" id="bbox-total"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RESIZER -->
+                <div class="ocr-resizer" id="ocr-resizer"></div>
+
+                <!-- RIGHT: Extracted Entities -->
+                <div class="ocr-entities-panel" id="ocr-entities-panel">
+                    <div class="entities-header">
+                        <h3 class="entities-title">Extracted Entities</h3>
+                        <span class="entities-confidence" id="entities-overall-confidence">Overall: 94.2%</span>
+                    </div>
+                    <div class="entities-list" id="entities-list">
+                        <!-- JS populated -->
+                    </div>
+                    <!-- AI Suggestion Banner -->
+                    <div class="ai-suggestion-banner" id="ai-suggestion-banner">
+                        <div class="ai-suggestion-icon">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M10 2C5.58 2 2 5.58 2 10s3.58 8 8 8 8-3.58 8-8-3.58-8-8-8z"/>
+                                <path d="M10 6v4l2.5 2.5"/>
+                            </svg>
+                        </div>
+                        <div class="ai-suggestion-text">
+                            <strong>AI Suggestion:</strong> Apply "Standard Invoice" template based on document history.
+                        </div>
+                        <button class="btn btn--sm btn--accent" id="apply-template-btn">Apply</button>
+                        <button class="btn btn--sm btn--ghost" id="dismiss-template-btn">Dismiss</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ══════════════════════════════════════ -->
+        <!--  PAGE: GENERATE                       -->
+        <!-- ══════════════════════════════════════ -->
+        <section class="page" id="page-generate">
+            <div class="generate-layout">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Template-Based Generation</h2>
+                        <p class="card-subtitle">Generate multiple documents with varied content from a source template</p>
+                    </div>
+                    <div class="generate-config">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="gen-source-select">Source Template</label>
+                                <select class="form-input" id="gen-source-select">
+                                    <!-- Dynamically populated from DocumentStore -->
+                                </select>
+                                <p class="config-hint">Templates are loaded from documents uploaded in Import &amp; Config</p>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="gen-data-source">Data Source</label>
+                                <select class="form-input" id="gen-data-source">
+                                    <option>Random Generator</option>
+                                    <option>CSV Upload</option>
+                                    <option>Database Query</option>
+                                </select>
+                                <p class="config-hint">Choose how field values are populated per document</p>
+                            </div>
+                        </div>
+
+                        <!-- CSV Upload Area (shown when Data Source = CSV Upload) -->
+                        <div class="gen-csv-upload-area" id="gen-csv-upload-area" style="display:none;">
+                            <label class="gen-csv-dropzone" for="gen-csv-input">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 14V2M6 6l4-4 4 4"/><path d="M3 13v4a1 1 0 001 1h12a1 1 0 001-1v-4"/></svg>
+                                <span id="gen-csv-label">Click to upload CSV data file</span>
+                                <input type="file" id="gen-csv-input" accept=".csv" hidden>
+                            </label>
+                        </div>
+
+                        <!-- Template Info Card -->
+                        <div class="gen-template-info" id="gen-template-info">
+                            <!-- Dynamically populated by JS -->
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="gen-count-input">Number of Documents</label>
+                                <input type="number" class="form-input" id="gen-count-input" value="10" min="1" max="500">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="gen-format-select">Output Format</label>
+                                <select class="form-input" id="gen-format-select">
+                                    <option>PDF</option>
+                                    <option>PNG Image</option>
+                                    <option>DOCX</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <div class="toggle-row">
+                                <label class="config-label" for="gen-preserve-format">Preserve Original Font/Format</label>
+                                <label class="toggle">
+                                    <input type="checkbox" id="gen-preserve-format" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="generate-actions">
+                        <button class="btn btn--primary btn--lg" id="generate-btn">
+                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 2v14M2 9h14"/></svg>
+                            Generate Documents
+                        </button>
+                    </div>
+                    <!-- Generation Progress -->
+                    <div class="generate-progress hidden" id="generate-progress">
+                        <div class="progress-header">
+                            <span class="progress-title">Generating documents...</span>
+                            <span class="progress-count" id="gen-progress-count">0 / 10</span>
+                        </div>
+                        <div class="progress-bar-track">
+                            <div class="progress-bar-fill" id="gen-progress-fill" style="width: 0%"></div>
+                        </div>
+                        <div class="progress-log" id="gen-progress-log">
+                            <!-- JS populated -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ══════════════════════════════════════ -->
+        <!--  PAGE: EXPORT                         -->
+        <!-- ══════════════════════════════════════ -->
+        <section class="page" id="page-export">
+            <div class="export-layout">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Batch Export</h2>
+                        <p class="card-subtitle">Export generated documents and extracted OCR data</p>
+                    </div>
+                    <div class="export-options">
+                        <div class="export-option-card" id="export-pdf-option">
+                            <div class="export-option-icon">
+                                <svg width="40" height="40" viewBox="0 0 40 40" fill="none" stroke="#C0392B" stroke-width="1.5">
+                                    <rect x="6" y="4" width="28" height="32" rx="3"/>
+                                    <path d="M12 16h16M12 22h12M12 28h8"/>
+                                    <text x="14" y="14" font-size="7" font-weight="700" fill="#C0392B" stroke="none">PDF</text>
+                                </svg>
+                            </div>
+                            <h3 class="export-option-title">PDF Documents</h3>
+                            <p class="export-option-desc">Export all generated documents in PDF format</p>
+                            <span class="export-option-count">10 documents ready</span>
+                        </div>
+                        <div class="export-option-card" id="export-csv-option">
+                            <div class="export-option-icon">
+                                <svg width="40" height="40" viewBox="0 0 40 40" fill="none" stroke="#27AE60" stroke-width="1.5">
+                                    <rect x="6" y="4" width="28" height="32" rx="3"/>
+                                    <path d="M12 12h16M12 18h16M12 24h16M12 30h16"/>
+                                    <path d="M20 4v32M28 4v32"/>
+                                    <text x="10" y="10" font-size="6" font-weight="700" fill="#27AE60" stroke="none">CSV</text>
+                                </svg>
+                            </div>
+                            <h3 class="export-option-title">OCR Data (CSV)</h3>
+                            <p class="export-option-desc">Export extracted data with field labels and confidence scores</p>
+                            <span class="export-option-count">148 records</span>
+                        </div>
+                        <div class="export-option-card" id="export-json-option">
+                            <div class="export-option-icon">
+                                <svg width="40" height="40" viewBox="0 0 40 40" fill="none" stroke="#0453CD" stroke-width="1.5">
+                                    <rect x="6" y="4" width="28" height="32" rx="3"/>
+                                    <path d="M14 14l-4 6 4 6M26 14l4 6-4 6M18 28l4-16"/>
+                                </svg>
+                            </div>
+                            <h3 class="export-option-title">Structured JSON</h3>
+                            <p class="export-option-desc">Export data in structured JSON with schema mapping</p>
+                            <span class="export-option-count">Full schema</span>
+                        </div>
+                    </div>
+                    <div class="export-actions">
+                        <button class="btn btn--outline" id="export-selected-btn">Export Selected</button>
+                        <button class="btn btn--primary" id="export-all-btn">Export All Formats</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
