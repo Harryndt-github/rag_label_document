@@ -2000,7 +2000,6 @@ const ExportPage = {
 
         const { PDFDocument, rgb, StandardFonts } = window.PDFLib;
         const outPdf = await PDFDocument.create();
-        const font = await outPdf.embedFont(StandardFonts.Helvetica);
 
         for (let i = 0; i < docs.length; i++) {
             const doc = docs[i];
@@ -2015,6 +2014,7 @@ const ExportPage = {
                  templatePdfDoc.addPage([595.28, 841.89]); // A4 fallback
             }
             
+            const font = await templatePdfDoc.embedFont(StandardFonts.Helvetica);
             const pages = templatePdfDoc.getPages();
             
             Object.keys(doc.data).forEach(field => {
