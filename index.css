@@ -2359,6 +2359,41 @@ body {
     flex-shrink: 0;
 }
 
+/* Template Upload Zone on Generate Page */
+.gen-template-upload-zone {
+    margin-top: var(--space-2);
+}
+
+.gen-template-dropzone {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border: 2px dashed var(--color-border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    transition: all var(--transition-base);
+}
+
+.gen-template-dropzone:hover {
+    border-color: var(--color-accent);
+    background: var(--color-accent-glow);
+    color: var(--color-accent);
+}
+
+.gen-template-dropzone.uploaded {
+    border-color: var(--color-success);
+    background: var(--color-success-bg);
+    color: var(--color-success);
+    border-style: solid;
+}
+
+.gen-template-dropzone svg {
+    flex-shrink: 0;
+}
+
 /* Completion Actions */
 .gen-completion-actions {
     margin-top: var(--space-4);

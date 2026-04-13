@@ -1484,6 +1484,40 @@ const GeneratePage = {
         if (csvInput) {
             csvInput.addEventListener('change', (e) => this.onCsvSelected(e));
         }
+
+        // Direct template upload on Generate page
+        const templateInput = document.getElementById('gen-template-file-input');
+        if (templateInput) {
+            templateInput.addEventListener('change', (e) => this.onTemplateFileSelected(e));
+        }
+    },
+
+    onTemplateFileSelected(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (!file.name.toLowerCase().endsWith('.pdf')) {
+            alert('Please upload a PDF file as template.');
+            return;
+        }
+
+        // Register in DocumentStore
+        const template = DocumentStore.addTemplate(file);
+
+        // Auto-select the newly uploaded template
+        const select = document.getElementById('gen-source-select');
+        // refreshTemplateDropdown is called via the 'templatesChanged' event,
+        // but we need to wait a tick for it to repopulate
+        setTimeout(() => {
+            select.value = template.id;
+            this.updateTemplateInfo();
+        }, 50);
+
+        // Update UI label
+        const label = document.getElementById('gen-template-upload-label');
+        const dropzone = document.querySelector('.gen-template-dropzone');
+        if (label) label.textContent = `✓ ${file.name} loaded`;
+        if (dropzone) dropzone.classList.add('uploaded');
     },
 
     refreshTemplateDropdown() {
@@ -1616,7 +1650,7 @@ const GeneratePage = {
             return;
         }
 
-        const count = Math.min(parseInt(document.getElementById('gen-count-input').value) || 10, 500);
+        const requestedCount = Math.min(parseInt(document.getElementById('gen-count-input').value) || 10, 500);
         const format = document.getElementById('gen-format-select').value;
         const dataSource = document.getElementById('gen-data-source').value;
         const preserveFormat = document.getElementById('gen-preserve-format').checked;
@@ -1637,7 +1671,7 @@ const GeneratePage = {
         DocumentStore.clearGeneratedDocuments();
 
         // Log: starting
-        this._log(log, `Starting generation: ${count} documents from "${template.name}"`);
+        this._log(log, `Starting generation from "${template.name}"`);
         this._log(log, `Data source: ${dataSource} | Format: ${format} | Preserve format: ${preserveFormat}`);
 
         const fields = DocumentStore.ocrData;
@@ -1678,8 +1712,16 @@ const GeneratePage = {
             }
         }
 
-        // Adjust count slightly if we have explicit data
-        const actualCount = Math.min(count, Math.max(normalizedData.length, 1));
+        // Use ALL rows from imported data (each row = unique case_id + document_instance)
+        // If no data imported, fall back to the requested count
+        const actualCount = normalizedData.length > 0 ? normalizedData.length : requestedCount;
+
+        if (normalizedData.length > 0) {
+            const uniqueCases = [...new Set(normalizedData.map(r => r.caseId))];
+            this._log(log, `Found ${normalizedData.length} document instances across ${uniqueCases.length} case_id(s)`, 'info');
+        } else {
+            this._log(log, `No imported data — generating ${actualCount} documents with random values`, 'info');
+        }
 
         const interval = setInterval(() => {
             current++;

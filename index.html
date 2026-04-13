@@ -769,7 +769,14 @@
                                 <select class="form-input" id="gen-source-select">
                                     <!-- Dynamically populated from DocumentStore -->
                                 </select>
-                                <p class="config-hint">Templates are loaded from documents uploaded in Import &amp; Config</p>
+                                <div class="gen-template-upload-zone" id="gen-template-upload-zone">
+                                    <label class="gen-template-dropzone" for="gen-template-file-input">
+                                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 14V2M6 6l4-4 4 4"/><path d="M3 13v4a1 1 0 001 1h12a1 1 0 001-1v-4"/></svg>
+                                        <span id="gen-template-upload-label">Upload PDF Template</span>
+                                        <input type="file" id="gen-template-file-input" accept=".pdf" hidden>
+                                    </label>
+                                </div>
+                                <p class="config-hint">Upload or select a PDF template for overlay generation</p>
                             </div>
                             <div class="form-group">
                                 <label class="form-label" for="gen-data-source">Data Source</label>
