@@ -1787,7 +1787,7 @@ const ExportPage = {
             selected.forEach(card => {
                 if (card.id === 'export-csv-option') formats.push('csv');
                 if (card.id === 'export-json-option') formats.push('json');
-                if (card.id === 'export-pdf-option') formats.push('summary');
+                if (card.id === 'export-pdf-option') formats.push('pdf');
             });
             this._exportSequential(formats, 'export-selected-btn');
         });
@@ -1872,6 +1872,9 @@ const ExportPage = {
                     case 'summary':
                         filename = this._buildSummary();
                         break;
+                    case 'pdf':
+                        filename = this._buildPDFs();
+                        break;
                 }
                 success = true;
             } catch (e) {
@@ -1953,6 +1956,61 @@ const ExportPage = {
         return filename;
     },
 
+    _buildPDFs() {
+        const docs = DocumentStore.generatedDocuments;
+        if (!docs || docs.length === 0) return null;
+        
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF();
+        
+        docs.forEach((doc, i) => {
+            if (i > 0) pdf.addPage();
+            
+            // Header
+            pdf.setFontSize(16);
+            pdf.setTextColor(40, 40, 40);
+            pdf.text("Insight Ledger - Generated Document", 20, 20);
+            
+            pdf.setFontSize(12);
+            pdf.text(`Document Name: ${doc.name}`, 20, 35);
+            pdf.text(`Template: ${doc.templateName}`, 20, 45);
+            pdf.text(`Generated At: ${doc.generatedAt.toLocaleString()}`, 20, 55);
+            
+            // Separator 
+            pdf.setLineWidth(0.5);
+            pdf.line(20, 65, 190, 65);
+            
+            // Extracted Fields
+            pdf.setFontSize(14);
+            pdf.setTextColor(0, 0, 0);
+            pdf.text("Data Values:", 20, 80);
+            
+            pdf.setFontSize(11);
+            let y = 95;
+            Object.entries(doc.data).forEach(([key, val]) => {
+                const safeKey = String(key).substring(0, 40);
+                const safeVal = String(val).substring(0, 80);
+                pdf.text(`${safeKey}: ${safeVal}`, 25, y);
+                y += 10;
+                
+                if (y > 280) {
+                    pdf.addPage();
+                    y = 20;
+                }
+            });
+            
+            // Footer
+            pdf.setFontSize(9);
+            pdf.setTextColor(150, 150, 150);
+            const pageCount = pdf.internal.getNumberOfPages();
+            pdf.text(`Page ${pageCount}`, 100, 290, { align: 'center' });
+        });
+        
+        const filename = 'generated_documents_batch.pdf';
+        pdf.save(filename);
+        return filename;
+    },
+
     updateExportCounts() {
         const docs = DocumentStore.generatedDocuments;
         const pdfCount = document.querySelector('#export-pdf-option .export-option-count');
@@ -2008,8 +2066,8 @@ const ExportPage = {
         panel.id = 'export-status-panel';
         panel.className = 'export-status-panel export-status--success';
 
-        const formatLabels = { csv: 'CSV Data', json: 'Structured JSON', summary: 'Report (TXT)' };
-        const formatIcons = { csv: '📊', json: '📋', summary: '📄' };
+        const formatLabels = { csv: 'CSV Data', json: 'Structured JSON', pdf: 'PDF Document', summary: 'Report (TXT)' };
+        const formatIcons = { csv: '📊', json: '📋', pdf: '📄', summary: '📄' };
 
         const rows = results.map(r => `
             <div class="export-status-row">
