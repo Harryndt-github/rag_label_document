@@ -784,6 +784,7 @@
                                     <option>Random Generator</option>
                                     <option value="CSV Upload">CSV Upload</option>
                                     <option value="Excel Upload">Excel Upload (XLSX)</option>
+                                    <option value="AI Engine">AI Engine (LM Studio)</option>
                                     <option>Database Query</option>
                                 </select>
                                 <p class="config-hint">Choose how field values are populated per document</p>
@@ -826,6 +827,42 @@
                                     <span class="toggle-slider"></span>
                                 </label>
                             </div>
+                        </div>
+                        <div class="form-group">
+                            <div class="toggle-row">
+                                <label class="config-label" for="gen-ai-enhance">AI Content Enhancement</label>
+                                <label class="toggle">
+                                    <input type="checkbox" id="gen-ai-enhance">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <p class="config-hint">Use LM Studio AI to generate improved, context-aware content</p>
+                        </div>
+
+                        <!-- AI Engine Status Panel -->
+                        <div class="gen-ai-panel" id="gen-ai-panel" style="display:none;">
+                            <div class="gen-ai-panel-header">
+                                <div class="gen-ai-status-dot" id="gen-ai-status-dot"></div>
+                                <span class="gen-ai-status-text" id="gen-ai-status-text">Checking AI Engine...</span>
+                            </div>
+                            <div class="gen-ai-panel-body">
+                                <div class="gen-ai-info-row">
+                                    <span>Endpoint:</span>
+                                    <code id="gen-ai-endpoint">http://127.0.0.1:1234</code>
+                                </div>
+                                <div class="gen-ai-info-row">
+                                    <span>Model:</span>
+                                    <code id="gen-ai-model">google/gemma-4-26b-a4b</code>
+                                </div>
+                                <div class="gen-ai-info-row">
+                                    <span>Mode:</span>
+                                    <span id="gen-ai-mode">Template Extraction + Content Generation</span>
+                                </div>
+                            </div>
+                            <button class="btn btn--sm btn--outline" id="gen-ai-test-btn">
+                                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="M7 4v3l2 2"/></svg>
+                                Test Connection
+                            </button>
                         </div>
                     </div>
                     <div class="generate-actions">

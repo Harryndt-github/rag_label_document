@@ -2574,3 +2574,96 @@ body {
     border-color: rgba(0,0,0,0.15);
     border-top-color: var(--color-accent);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   AI ENGINE PANEL
+   ═══════════════════════════════════════════════════════════════ */
+.gen-ai-panel {
+    margin-top: var(--space-4);
+    background: linear-gradient(135deg, #0F1B28 0%, #1A2B3C 100%);
+    border: 1px solid rgba(4, 83, 205, 0.3);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4) var(--space-5);
+    animation: slideUp 0.3s ease;
+}
+
+.gen-ai-panel-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.gen-ai-status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: var(--radius-full);
+    background: var(--color-text-muted);
+    flex-shrink: 0;
+    transition: background 0.3s ease;
+}
+
+.gen-ai-status-dot.online {
+    background: var(--color-success);
+    box-shadow: 0 0 8px rgba(5, 150, 105, 0.5);
+    animation: pulse-dot 2s infinite;
+}
+
+.gen-ai-status-dot.offline {
+    background: var(--color-error);
+}
+
+.gen-ai-status-dot.checking {
+    background: var(--color-warning);
+    animation: pulse-dot 1s infinite;
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.gen-ai-status-text {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: rgba(255,255,255,0.85);
+}
+
+.gen-ai-panel-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+}
+
+.gen-ai-info-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: var(--text-xs);
+    color: rgba(255,255,255,0.5);
+}
+
+.gen-ai-info-row code {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: rgba(255,255,255,0.7);
+    background: rgba(255,255,255,0.06);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+}
+
+.gen-ai-panel .btn--outline {
+    border-color: rgba(255,255,255,0.15);
+    color: rgba(255,255,255,0.7);
+    width: 100%;
+    margin-top: var(--space-2);
+}
+
+.gen-ai-panel .btn--outline:hover {
+    border-color: var(--color-accent);
+    background: rgba(4, 83, 205, 0.15);
+    color: #6DB3F8;
+}

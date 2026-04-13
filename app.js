@@ -1653,7 +1653,197 @@ const OCRPreview = {
 };
 
 /* ═══════════════════════════════════════════════════════════════
-   GENERATE PAGE
+   AI ENGINE — LM Studio Integration (Local Gemma 4)
+   ═══════════════════════════════════════════════════════════════ */
+const AIEngine = {
+    endpoint: 'http://127.0.0.1:1234',
+    model: 'google/gemma-4-26b-a4b',
+    isAvailable: false,
+    _checking: false,
+
+    // Check if LM Studio is running
+    async checkConnection() {
+        const dot = document.getElementById('gen-ai-status-dot');
+        const text = document.getElementById('gen-ai-status-text');
+        if (dot) { dot.className = 'gen-ai-status-dot checking'; }
+        if (text) { text.textContent = 'Checking AI Engine...'; }
+
+        this._checking = true;
+        try {
+            const res = await fetch(`${this.endpoint}/v1/models`, {
+                method: 'GET',
+                signal: AbortSignal.timeout(5000)
+            });
+            if (res.ok) {
+                const data = await res.json();
+                this.isAvailable = true;
+                if (dot) { dot.className = 'gen-ai-status-dot online'; }
+                if (text) { text.textContent = `Online — ${data.data?.length || 1} model(s) loaded`; }
+                // Update model name if available
+                if (data.data && data.data.length > 0) {
+                    const modelEl = document.getElementById('gen-ai-model');
+                    if (modelEl) modelEl.textContent = data.data[0].id || this.model;
+                }
+                return true;
+            }
+        } catch (e) {
+            // Connection failed
+        }
+        this.isAvailable = false;
+        if (dot) { dot.className = 'gen-ai-status-dot offline'; }
+        if (text) { text.textContent = 'Offline — Start LM Studio to enable AI'; }
+        this._checking = false;
+        return false;
+    },
+
+    // Generate content for a single field using AI
+    async generateFieldContent(fieldCode, fieldLabel, docContext, existingValue) {
+        if (!this.isAvailable) return existingValue || DocumentStore.generateRandomValue(fieldCode);
+
+        const systemPrompt = `You are a professional document content generator specializing in business documents (invoices, contracts, bills of lading, certificates of origin, etc.).
+Your task: Generate realistic, varied, and contextually appropriate content for document fields.
+Rules:
+- Return ONLY the field value, no explanations
+- Use realistic Vietnamese/English business naming conventions
+- Vary content each time — do not repeat the same data
+- Keep values concise and fitting for the field type
+- For dates: use format YYYY-MM-DD
+- For amounts: use comma-separated numbers with 2 decimal places
+- For company names: use real-sounding Vietnamese/Chinese/international company names`;
+
+        const userPrompt = `Generate a realistic value for the field "${fieldLabel}" (code: ${fieldCode}).
+Document context: ${docContext}
+${existingValue ? `Reference value (generate something similar but different): ${existingValue}` : ''}
+Return ONLY the value, nothing else.`;
+
+        try {
+            const res = await fetch(`${this.endpoint}/v1/chat/completions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: this.model,
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userPrompt }
+                    ],
+                    temperature: 0.8,
+                    max_tokens: 200,
+                    stream: false
+                }),
+                signal: AbortSignal.timeout(15000)
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                const content = data.choices?.[0]?.message?.content?.trim();
+                if (content && content.length > 0 && content.length < 300) {
+                    return content;
+                }
+            }
+        } catch (e) {
+            console.warn(`[AIEngine] Failed for ${fieldCode}:`, e.message);
+        }
+
+        // Fallback to random generator
+        return DocumentStore.generateRandomValue(fieldCode);
+    },
+
+    // Batch generate content for multiple fields using a single AI call (more efficient)
+    async generateBatchContent(fields, docContext) {
+        if (!this.isAvailable) return null;
+
+        const fieldList = fields.map(f => `- ${f.code} (${f.label})`).join('\n');
+        const systemPrompt = `You are a professional document content generator for business documents.
+Generate realistic, varied content for each field. Return a JSON object with field codes as keys and generated values as values.
+Rules: Return ONLY valid JSON. Use realistic Vietnamese/English business data. Vary content each time.`;
+
+        const userPrompt = `Generate realistic values for these fields in a ${docContext} document:
+${fieldList}
+
+Return ONLY a JSON object like: {"field_code_1": "value1", "field_code_2": "value2", ...}`;
+
+        try {
+            const res = await fetch(`${this.endpoint}/v1/chat/completions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: this.model,
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userPrompt }
+                    ],
+                    temperature: 0.85,
+                    max_tokens: 1500,
+                    stream: false
+                }),
+                signal: AbortSignal.timeout(30000)
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                let content = data.choices?.[0]?.message?.content?.trim();
+                if (content) {
+                    // Try to extract JSON from the response
+                    const jsonMatch = content.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) {
+                        try {
+                            return JSON.parse(jsonMatch[0]);
+                        } catch (e) {
+                            console.warn('[AIEngine] JSON parse failed, using individual fallback');
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[AIEngine] Batch generation failed:', e.message);
+        }
+        return null;
+    },
+
+    // Use AI to improve/enhance existing Excel data values
+    async enhanceExcelContent(fieldCode, fieldLabel, originalValue, docContext) {
+        if (!this.isAvailable || !originalValue) return originalValue;
+
+        const prompt = `You are a document content improvement assistant.
+Given this field from a ${docContext} document:
+Field: ${fieldLabel} (${fieldCode})
+Current value: "${originalValue}"
+
+If the value looks correct and complete, return it unchanged.
+If it can be improved (better formatting, more realistic, more complete), provide an improved version.
+Return ONLY the value, no explanation.`;
+
+        try {
+            const res = await fetch(`${this.endpoint}/v1/chat/completions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: this.model,
+                    messages: [{ role: 'user', content: prompt }],
+                    temperature: 0.3,
+                    max_tokens: 200,
+                    stream: false
+                }),
+                signal: AbortSignal.timeout(10000)
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                const content = data.choices?.[0]?.message?.content?.trim();
+                if (content && content.length > 0 && content.length < 300) {
+                    return content;
+                }
+            }
+        } catch (e) {
+            console.warn(`[AIEngine] Enhancement failed for ${fieldCode}`);
+        }
+        return originalValue;
+    }
+};
+
+
+/* ═══════════════════════════════════════════════════════════════
+   GENERATE PAGE — 3-Step Document Generation Pipeline
    ═══════════════════════════════════════════════════════════════ */
 const GeneratePage = {
     isGenerating: false,
@@ -1668,7 +1858,7 @@ const GeneratePage = {
         // Listen for template changes (new uploads / removals)
         DocumentStore.on('templatesChanged', () => this.refreshTemplateDropdown());
 
-        // Show/hide CSV upload area based on data source selection
+        // Show/hide CSV upload area and AI panel based on data source selection
         const dataSourceSelect = document.getElementById('gen-data-source');
         dataSourceSelect.addEventListener('change', () => this.onDataSourceChange());
 
@@ -1682,6 +1872,43 @@ const GeneratePage = {
         const templateInput = document.getElementById('gen-template-file-input');
         if (templateInput) {
             templateInput.addEventListener('change', (e) => this.onTemplateFileSelected(e));
+        }
+
+        // AI Engine controls
+        const aiTestBtn = document.getElementById('gen-ai-test-btn');
+        if (aiTestBtn) {
+            aiTestBtn.addEventListener('click', () => AIEngine.checkConnection());
+        }
+
+        // AI Enhancement toggle → show/hide AI panel
+        const aiEnhanceToggle = document.getElementById('gen-ai-enhance');
+        if (aiEnhanceToggle) {
+            aiEnhanceToggle.addEventListener('change', () => this._updateAIPanel());
+        }
+
+        // Template select change → extract template
+        const sourceSelect = document.getElementById('gen-source-select');
+        if (sourceSelect) {
+            sourceSelect.addEventListener('change', () => {
+                this.updateTemplateInfo();
+                this._extractTemplateStructure();
+            });
+        }
+    },
+
+    // ─── AI Panel Visibility ────────────────────────────────────
+    _updateAIPanel() {
+        const aiPanel = document.getElementById('gen-ai-panel');
+        const aiToggle = document.getElementById('gen-ai-enhance');
+        const dataSource = document.getElementById('gen-data-source').value;
+
+        const showAI = aiToggle?.checked || dataSource === 'AI Engine';
+
+        if (aiPanel) {
+            aiPanel.style.display = showAI ? 'block' : 'none';
+            if (showAI && !AIEngine.isAvailable && !AIEngine._checking) {
+                AIEngine.checkConnection();
+            }
         }
     },
 
@@ -1699,11 +1926,10 @@ const GeneratePage = {
 
         // Auto-select the newly uploaded template
         const select = document.getElementById('gen-source-select');
-        // refreshTemplateDropdown is called via the 'templatesChanged' event,
-        // but we need to wait a tick for it to repopulate
         setTimeout(() => {
             select.value = template.id;
             this.updateTemplateInfo();
+            this._extractTemplateStructure();
         }, 50);
 
         // Update UI label
@@ -1739,7 +1965,6 @@ const GeneratePage = {
 
         // Update the template info card
         this.updateTemplateInfo();
-        select.addEventListener('change', () => this.updateTemplateInfo());
     },
 
     updateTemplateInfo() {
@@ -1754,6 +1979,7 @@ const GeneratePage = {
             const maxTemplatePage = this._maxTemplatePage || 1;
             const fieldCount = masterSchema ? Object.keys(masterSchema).length : DocumentStore.ocrData.length;
             const docInstCount = allDocInstances ? Object.keys(allDocInstances).length : 0;
+            const templateStruct = this._templateStructure;
 
             // Count fields per page for multi-page display
             let pageBreakdown = '';
@@ -1774,6 +2000,7 @@ const GeneratePage = {
                 <div class="template-info-row"><span>Template Pages:</span><span>${maxTemplatePage > 1 ? maxTemplatePage + ' pages' : (tpl.pages || 1) + ' page(s)'}</span></div>
                 <div class="template-info-row"><span>Uploaded:</span><span>${tpl.uploadedAt.toLocaleDateString()}</span></div>
                 <div class="template-info-row"><span>Schema Fields:</span><span style="color:var(--color-accent);font-weight:600">${fieldCount} field(s)</span></div>
+                ${templateStruct ? `<div class="template-info-row"><span>Template Structure:</span><span style="color:var(--color-success);font-weight:600">✓ Extracted</span></div>` : ''}
                 ${pageBreakdown ? `<div class="template-info-row"><span>Page Layout:</span><span style="font-family:var(--font-mono);font-size:10px">${pageBreakdown}</span></div>` : ''}
                 ${docInstCount > 0 ? `<div class="template-info-row"><span>Excel Instances:</span><span style="color:var(--color-success);font-weight:600">${docInstCount} document(s)</span></div>` : ''}
             `;
@@ -1789,6 +2016,7 @@ const GeneratePage = {
         if (csvArea) {
             csvArea.style.display = (source === 'CSV Upload' || source === 'Excel Upload') ? 'block' : 'none';
         }
+        this._updateAIPanel();
     },
 
     csvData: null,
@@ -1844,9 +2072,8 @@ const GeneratePage = {
         let newFields = [];
         if (this.csvData.headers.includes('field_code') && this.csvData.headers.includes('value')) {
              // Build COMPLETE master schema by scanning ALL rows across ALL document instances
-             // Collect every unique field_code with its coordinates, aggregated by page
              const masterSchema = {};
-             const allDocInstances = {}; // key → { caseId, docInstance, fields: { field_code: { value, x, y, ... } } }
+             const allDocInstances = {};
              let maxPage = 1;
 
              for (const r of this.csvData.rows) {
@@ -1865,14 +2092,12 @@ const GeneratePage = {
 
                  if (page > maxPage) maxPage = page;
 
-                 // Build master schema — keep the first occurrence's coordinates for each field_code
                  if (!masterSchema[fieldCode]) {
                      masterSchema[fieldCode] = {
                          x, y, width, height, page, label
                      };
                  }
 
-                 // Build per-document-instance data for later use
                  const instKey = `${caseId}___${docInst}`;
                  if (!allDocInstances[instKey]) {
                      allDocInstances[instKey] = { caseId, docInstance: docInst, fields: {} };
@@ -1882,7 +2107,6 @@ const GeneratePage = {
                  };
              }
 
-             // Store master schema and document instances for generation
              this._masterFieldSchema = masterSchema;
              this._allDocInstances = allDocInstances;
              this._maxTemplatePage = maxPage;
@@ -1906,8 +2130,215 @@ const GeneratePage = {
     _masterFieldSchema: null,
     _allDocInstances: null,
     _maxTemplatePage: 1,
+    _templateStructure: null, // Extracted template structure from Step 1
 
-    startGeneration() {
+    // ═══════════════════════════════════════════════════════════════
+    //  STEP 1: Extract Template Structure (PDF → Word-like Schema)
+    // ═══════════════════════════════════════════════════════════════
+    async _extractTemplateStructure() {
+        const select = document.getElementById('gen-source-select');
+        const tpl = DocumentStore.uploadedTemplates.find(t => t.id === select.value);
+        if (!tpl || !tpl._file) {
+            this._templateStructure = null;
+            return;
+        }
+
+        try {
+            const arrayBuffer = await tpl._file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            const totalPages = pdf.numPages;
+            tpl.pages = totalPages;
+
+            const structure = {
+                pages: [],
+                totalPages,
+                documentType: 'Unknown',
+                fullText: '',
+                extractedFields: {}
+            };
+
+            for (let i = 1; i <= totalPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                const viewport = page.getViewport({ scale: 1 });
+
+                // Extract text items with their positions
+                const pageItems = textContent.items.map(item => ({
+                    text: item.str,
+                    x: item.transform[4],
+                    y: viewport.height - item.transform[5], // Convert to top-down Y
+                    width: item.width,
+                    height: item.height || 12,
+                    fontName: item.fontName || 'default',
+                    fontSize: Math.abs(item.transform[0]) || 12
+                })).filter(item => item.text.trim().length > 0);
+
+                const pageText = pageItems.map(item => item.text).join(' ');
+
+                structure.pages.push({
+                    pageNumber: i,
+                    width: viewport.width,
+                    height: viewport.height,
+                    items: pageItems,
+                    text: pageText
+                });
+
+                structure.fullText += (i > 1 ? '\n\n--- PAGE ' + i + ' ---\n\n' : '') + pageText;
+            }
+
+            // Detect document type from full text
+            structure.documentType = this._detectDocTypeFromText(structure.fullText);
+
+            // Auto-detect field locations from template text patterns
+            this._autoDetectFieldsFromTemplate(structure);
+
+            this._templateStructure = structure;
+            this._maxTemplatePage = totalPages;
+
+            console.log(`[Step1] Template extracted: ${totalPages} pages, ${Object.keys(structure.extractedFields).length} auto-detected fields, type: ${structure.documentType}`);
+            this.updateTemplateInfo();
+        } catch (err) {
+            console.error('[Step1] Template extraction error:', err);
+            this._templateStructure = null;
+        }
+    },
+
+    _detectDocTypeFromText(text) {
+        const upper = text.toUpperCase();
+        if (upper.includes('SALES CONTRACT') || upper.includes('SALE CONTRACT')) return 'Sales Contract';
+        if (upper.includes('PURCHASE ORDER') || upper.includes('P.O.')) return 'Purchase Order';
+        if (upper.includes('COMMERCIAL INVOICE')) return 'Commercial Invoice';
+        if (upper.includes('PROFORMA INVOICE')) return 'Proforma Invoice';
+        if (upper.includes('INVOICE')) return 'Invoice';
+        if (upper.includes('CREDIT NOTE')) return 'Credit Note';
+        if (upper.includes('DEBIT NOTE')) return 'Debit Note';
+        if (upper.includes('PACKING LIST')) return 'Packing List';
+        if (upper.includes('BILL OF LADING') || upper.includes('B/L')) return 'Bill of Lading';
+        if (upper.includes('CERTIFICATE OF ORIGIN')) return 'Certificate of Origin';
+        if (upper.includes('RECEIPT')) return 'Receipt';
+        if (upper.includes('CONTRACT') || upper.includes('AGREEMENT')) return 'Contract';
+        return 'Document';
+    },
+
+    // Auto-detect label:value pairs from template text positions
+    _autoDetectFieldsFromTemplate(structure) {
+        const labelPatterns = [
+            { pattern: /(?:NO|No|NUMBER|Number)[.:;#\s]*/i, code: 'SO_CHUNG_TU', label: 'Document Number' },
+            { pattern: /(?:DATE|Date|Dated)[.:;\s]*/i, code: 'NGAY', label: 'Date' },
+            { pattern: /BUYER[:\s]*/i, code: 'TEN_NGUOI_MUA', label: 'Buyer' },
+            { pattern: /SELLER[:\s]*/i, code: 'TEN_NGUOI_BAN', label: 'Seller' },
+            { pattern: /(?:COMMODITY|GOODS|DESCRIPTION)[:\s]*/i, code: 'MO_TA_HANG', label: 'Goods Description' },
+            { pattern: /(?:QUANTITY|QTY)[:\s]*/i, code: 'SO_LUONG', label: 'Quantity' },
+            { pattern: /(?:UNIT PRICE|UNIT_PRICE|PRICE)[:\s]*/i, code: 'DON_GIA', label: 'Unit Price' },
+            { pattern: /(?:TOTAL|AMOUNT|VALUE)[:\s]*/i, code: 'TONG_TIEN', label: 'Total Amount' },
+            { pattern: /(?:PAYMENT|PAYMENT TERMS)[:\s]*/i, code: 'PHUONG_THUC_THANH_TOAN', label: 'Payment Terms' },
+            { pattern: /(?:SHIPMENT|DELIVERY)[:\s]*/i, code: 'THOI_HAN_GIAO', label: 'Shipment Terms' },
+            { pattern: /(?:PORT OF LOADING|LOADING PORT)[:\s]*/i, code: 'CANG_XUAT', label: 'Port of Loading' },
+            { pattern: /(?:PORT OF DISCHARGE|DESTINATION)[:\s]*/i, code: 'CANG_NHAP', label: 'Port of Discharge' },
+        ];
+
+        for (const page of structure.pages) {
+            for (const item of page.items) {
+                for (const lp of labelPatterns) {
+                    if (lp.pattern.test(item.text)) {
+                        // Found a label — the value is likely to the right or below
+                        const valueItem = page.items.find(other =>
+                            other !== item &&
+                            other.text.trim().length > 0 &&
+                            ((Math.abs(other.y - item.y) < 5 && other.x > item.x + item.width) || // Same line, to the right
+                             (other.y > item.y && other.y < item.y + 20 && Math.abs(other.x - item.x) < 50)) // Next line, similar x
+                        );
+
+                        if (valueItem && !structure.extractedFields[lp.code]) {
+                            structure.extractedFields[lp.code] = {
+                                label: lp.label,
+                                sampleValue: valueItem.text.trim(),
+                                x: valueItem.x,
+                                y: valueItem.y,
+                                width: Math.max(valueItem.width, 100),
+                                height: valueItem.height || 14,
+                                page: page.pageNumber,
+                                fontName: valueItem.fontName,
+                                fontSize: valueItem.fontSize
+                            };
+                        }
+                    }
+                }
+            }
+        }
+    },
+
+    // ═══════════════════════════════════════════════════════════════
+    //  STEP 2: Populate Content (Excel Data + AI Enhancement)
+    // ═══════════════════════════════════════════════════════════════
+    async _populateContentForDocument(fields, docContext, useAI, existingValues, log) {
+        const aiEnhance = document.getElementById('gen-ai-enhance')?.checked || false;
+        const populatedFields = {};
+
+        if (useAI && AIEngine.isAvailable) {
+            // Try batch AI generation first
+            const fieldList = Object.keys(fields).map(fc => ({
+                code: fc,
+                label: fields[fc].label || fc
+            }));
+
+            this._log(log, `🤖 Requesting AI content for ${fieldList.length} fields...`, 'info');
+
+            const batchResult = await AIEngine.generateBatchContent(fieldList, docContext);
+            if (batchResult) {
+                Object.keys(fields).forEach(fc => {
+                    if (batchResult[fc]) {
+                        populatedFields[fc] = batchResult[fc];
+                    } else {
+                        populatedFields[fc] = DocumentStore.generateRandomValue(fc);
+                    }
+                });
+                this._log(log, `✓ AI generated ${Object.keys(batchResult).length} field values`, 'success');
+                return populatedFields;
+            }
+
+            // Fallback: individual field generation
+            this._log(log, `⚠ Batch failed, generating fields individually...`, 'info');
+            for (const fc of Object.keys(fields)) {
+                populatedFields[fc] = await AIEngine.generateFieldContent(
+                    fc, fields[fc].label || fc, docContext, existingValues?.[fc]
+                );
+            }
+            return populatedFields;
+        }
+
+        if (aiEnhance && existingValues && AIEngine.isAvailable) {
+            // Enhance existing Excel values with AI
+            this._log(log, `🤖 Enhancing Excel data with AI...`, 'info');
+            let enhanced = 0;
+            for (const fc of Object.keys(fields)) {
+                const original = existingValues[fc] || '';
+                if (original) {
+                    populatedFields[fc] = await AIEngine.enhanceExcelContent(
+                        fc, fields[fc].label || fc, original, docContext
+                    );
+                    if (populatedFields[fc] !== original) enhanced++;
+                } else {
+                    populatedFields[fc] = DocumentStore.generateRandomValue(fc);
+                }
+            }
+            if (enhanced > 0) {
+                this._log(log, `✓ AI enhanced ${enhanced} field values`, 'success');
+            }
+            return populatedFields;
+        }
+
+        // Use existing values or random generation
+        Object.keys(fields).forEach(fc => {
+            populatedFields[fc] = existingValues?.[fc] || DocumentStore.generateRandomValue(fc);
+        });
+        return populatedFields;
+    },
+
+    // ═══════════════════════════════════════════════════════════════
+    //  STEP 3: Start Generation (Full Pipeline)
+    // ═══════════════════════════════════════════════════════════════
+    async startGeneration() {
         if (this.isGenerating) return;
 
         const templateSelect = document.getElementById('gen-source-select');
@@ -1923,6 +2354,7 @@ const GeneratePage = {
         const format = document.getElementById('gen-format-select').value;
         const dataSource = document.getElementById('gen-data-source').value;
         const preserveFormat = document.getElementById('gen-preserve-format').checked;
+        const useAI = dataSource === 'AI Engine' || document.getElementById('gen-ai-enhance')?.checked;
 
         const progress = document.getElementById('generate-progress');
         const fill = document.getElementById('gen-progress-fill');
@@ -1939,25 +2371,74 @@ const GeneratePage = {
         log.innerHTML = '';
         DocumentStore.clearGeneratedDocuments();
 
-        // Log: starting
-        this._log(log, `Starting generation from "${template.name}"`);
-        this._log(log, `Data source: ${dataSource} | Format: ${format} | Preserve format: ${preserveFormat}`);
+        // ════════════════════════════════════════════════
+        //  STEP 1: Extract Template Structure
+        // ════════════════════════════════════════════════
+        this._log(log, `═══ STEP 1: Template Extraction ═══`, 'info');
+        this._log(log, `Loading template: "${template.name}"`, 'msg');
+
+        if (!this._templateStructure) {
+            await this._extractTemplateStructure();
+        }
+
+        if (this._templateStructure) {
+            const ts = this._templateStructure;
+            this._log(log, `✓ Template: ${ts.totalPages} page(s), type: ${ts.documentType}`, 'success');
+            this._log(log, `✓ Auto-detected fields: ${Object.keys(ts.extractedFields).length}`, 'success');
+        } else {
+            this._log(log, `⚠ Template structure not extracted — using schema-based generation`, 'info');
+        }
+
+        // ════════════════════════════════════════════════
+        //  STEP 2: Build Content (Excel Data / AI / Random)
+        // ════════════════════════════════════════════════
+        this._log(log, `\n═══ STEP 2: Content Population ═══`, 'info');
+        this._log(log, `Data source: ${dataSource} | AI Enhance: ${useAI}`, 'info');
+
+        // Check AI availability if needed
+        if (useAI && !AIEngine.isAvailable) {
+            this._log(log, `Checking AI Engine connection...`, 'info');
+            const aiOk = await AIEngine.checkConnection();
+            if (aiOk) {
+                this._log(log, `✓ AI Engine online — using ${AIEngine.model}`, 'success');
+            } else {
+                this._log(log, `⚠ AI Engine offline — falling back to random generation`, 'info');
+            }
+        }
 
         const fields = DocumentStore.ocrData;
         const generatedDocs = [];
-        let current = 0;
 
         const masterSchema = this._masterFieldSchema;
         const allDocInstances = this._allDocInstances;
         const maxTemplatePage = this._maxTemplatePage || 1;
+        const templateStruct = this._templateStructure;
 
-        // Determine actual generation source:
-        // If Excel data has document instances, use those as the primary data source
+        // Merge template-extracted fields into master schema if no Excel schema exists
+        let effectiveSchema = masterSchema;
+        if (!effectiveSchema && templateStruct && Object.keys(templateStruct.extractedFields).length > 0) {
+            effectiveSchema = {};
+            Object.entries(templateStruct.extractedFields).forEach(([code, f]) => {
+                effectiveSchema[code] = {
+                    x: f.x,
+                    y: f.y,
+                    width: f.width,
+                    height: f.height,
+                    page: f.page,
+                    label: f.label
+                };
+            });
+            this._log(log, `Using ${Object.keys(effectiveSchema).length} fields from template extraction`, 'info');
+        }
+
+        // Determine document context for AI
+        const docContext = templateStruct?.documentType || 'Business Document';
+
+        // Build generation queue
         const useExcelData = allDocInstances && Object.keys(allDocInstances).length > 0;
-        let generationQueue = []; // each item = { caseId, docInstance, fields }
+        let generationQueue = [];
 
         if (useExcelData) {
-            // Use real data from Excel rows
             const instKeys = Object.keys(allDocInstances);
             instKeys.forEach(key => {
                 const inst = allDocInstances[key];
@@ -1967,15 +2448,17 @@ const GeneratePage = {
                     fields: inst.fields
                 });
             });
-            this._log(log, `Excel data loaded: ${generationQueue.length} document instance(s) from uploaded file`, 'info');
-        } else if (masterSchema && Object.keys(masterSchema).length > 0) {
-            // Use master schema layout with synthetic random values
+            this._log(log, `Excel data loaded: ${generationQueue.length} document instance(s)`, 'info');
+        } else if (effectiveSchema && Object.keys(effectiveSchema).length > 0) {
+            this._log(log, `Schema: ${Object.keys(effectiveSchema).length} field(s)`, 'info');
+            this._log(log, `Generating ${requestedCount} document(s) with ${useAI && AIEngine.isAvailable ? 'AI' : 'synthetic'} data...`, 'info');
+
             for (let i = 0; i < requestedCount; i++) {
                 const synthFields = {};
-                Object.keys(masterSchema).forEach(fc => {
-                    const coord = masterSchema[fc];
+                Object.keys(effectiveSchema).forEach(fc => {
+                    const coord = effectiveSchema[fc];
                     synthFields[fc] = {
-                        value: DocumentStore.generateRandomValue(fc),
+                        value: '', // Will be populated in Step 2
                         x: coord.x,
                         y: coord.y,
                         width: coord.width,
@@ -1987,18 +2470,17 @@ const GeneratePage = {
                 generationQueue.push({
                     caseId: `CASE_${String(i + 1).padStart(4, '0')}`,
                     docInstance: `DOC_${String(i + 1).padStart(3, '0')}`,
-                    fields: synthFields
+                    fields: synthFields,
+                    needsPopulation: true
                 });
             }
-            this._log(log, `Master schema: ${Object.keys(masterSchema).length} field(s) across ${maxTemplatePage} page(s)`, 'info');
-            this._log(log, `Generating ${requestedCount} synthetic document(s)`, 'info');
         } else {
-            // No schema at all — use ocrData fields with random values
+            // No schema at all — use ocrData fields
             for (let i = 0; i < requestedCount; i++) {
                 const synthFields = {};
                 fields.forEach(f => {
                     synthFields[f.field] = {
-                        value: DocumentStore.generateRandomValue(f.field),
+                        value: '',
                         x: 50,
                         y: 50 + Object.keys(synthFields).length * 20,
                         width: 200,
@@ -2010,88 +2492,135 @@ const GeneratePage = {
                 generationQueue.push({
                     caseId: `CASE_${String(i + 1).padStart(4, '0')}`,
                     docInstance: `DOC_${String(i + 1).padStart(3, '0')}`,
-                    fields: synthFields
+                    fields: synthFields,
+                    needsPopulation: true
                 });
             }
-            this._log(log, `No master schema — generating ${requestedCount} documents with ${fields.length} random fields`, 'info');
+            this._log(log, `No schema — generating ${requestedCount} documents with ${fields.length} fields`, 'info');
         }
 
         const actualCount = generationQueue.length;
         countEl.textContent = `0 / ${actualCount}`;
 
+        // ════════════════════════════════════════════════
+        //  Populate content for items that need it
+        // ════════════════════════════════════════════════
+        for (let i = 0; i < generationQueue.length; i++) {
+            const item = generationQueue[i];
+            if (item.needsPopulation || (useAI && AIEngine.isAvailable)) {
+                const existingValues = {};
+                Object.keys(item.fields).forEach(fc => {
+                    if (item.fields[fc].value) existingValues[fc] = item.fields[fc].value;
+                });
+
+                const populated = await this._populateContentForDocument(
+                    item.fields, docContext,
+                    item.needsPopulation && useAI, // Use full AI generation for items without data
+                    existingValues,
+                    log
+                );
+
+                // Update field values
+                Object.keys(populated).forEach(fc => {
+                    if (item.fields[fc]) {
+                        item.fields[fc].value = populated[fc];
+                    }
+                });
+            }
+
+            // Ensure all fields have values (random fallback)
+            Object.keys(item.fields).forEach(fc => {
+                if (!item.fields[fc].value) {
+                    item.fields[fc].value = DocumentStore.generateRandomValue(fc);
+                }
+            });
+        }
+
+        // ════════════════════════════════════════════════
+        //  STEP 3: Generate Documents (PDF Output)
+        // ════════════════════════════════════════════════
+        this._log(log, `\n═══ STEP 3: PDF Generation ═══`, 'info');
         this._log(log, `Total documents to generate: ${actualCount}`, 'info');
-        if (masterSchema) {
-            const fieldList = Object.keys(masterSchema).slice(0, 15).join(', ');
-            const more = Object.keys(masterSchema).length > 15 ? ` ... +${Object.keys(masterSchema).length - 15} more` : '';
+
+        if (effectiveSchema) {
+            const fieldList = Object.keys(effectiveSchema).slice(0, 15).join(', ');
+            const more = Object.keys(effectiveSchema).length > 15 ? ` ... +${Object.keys(effectiveSchema).length - 15} more` : '';
             this._log(log, `Fields: ${fieldList}${more}`, 'info');
         }
 
-        const interval = setInterval(() => {
-            if (current >= actualCount) {
-                clearInterval(interval);
+        let current = 0;
+        const processNext = () => {
+            return new Promise(resolve => {
+                const interval = setInterval(() => {
+                    if (current >= actualCount) {
+                        clearInterval(interval);
+                        resolve();
+                        return;
+                    }
 
-                // Store all generated documents
-                DocumentStore.addGeneratedDocuments(generatedDocs);
+                    const item = generationQueue[current];
+                    current++;
 
-                this._log(log, `✓ All ${actualCount} documents generated successfully!`, 'success');
-                this._log(log, `→ ${actualCount} documents ready for export. Go to Export page to download.`, 'info');
+                    const pct = (current / actualCount) * 100;
+                    fill.style.width = pct + '%';
+                    countEl.textContent = `${current} / ${actualCount}`;
 
-                // Show completion actions
-                this._showCompletionActions(actualCount);
+                    const docData = {};
+                    const docMeta = {};
 
-                this.isGenerating = false;
-                generateBtn.disabled = false;
-                generateBtn.innerHTML = `
-                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 2v14M2 9h14"/></svg>
-                    Generate Documents
-                `;
-                return;
-            }
+                    Object.keys(item.fields).forEach(fc => {
+                        const fieldInfo = item.fields[fc];
+                        docData[fc] = fieldInfo.value;
+                        docMeta[fc] = [{
+                            value: fieldInfo.value,
+                            x: fieldInfo.x,
+                            y: fieldInfo.y,
+                            width: fieldInfo.width,
+                            height: fieldInfo.height,
+                            page: fieldInfo.page,
+                            label: fieldInfo.label || fc,
+                            rotation: 0
+                        }];
+                    });
 
-            const item = generationQueue[current];
-            current++;
+                    const docName = `${item.caseId} - ${item.docInstance}`;
 
-            const pct = (current / actualCount) * 100;
-            fill.style.width = pct + '%';
-            countEl.textContent = `${current} / ${actualCount}`;
+                    generatedDocs.push({
+                        id: `doc_${Date.now()}_${current}`,
+                        templateId: templateId,
+                        name: docName,
+                        caseId: item.caseId,
+                        docInstance: item.docInstance,
+                        data: docData,
+                        meta: docMeta,
+                        format: format,
+                        generatedAt: new Date(),
+                        preserveFormat: preserveFormat,
+                        maxTemplatePage: maxTemplatePage,
+                    });
 
-            const docData = {};
-            const docMeta = {};
-
-            // Build docData and docMeta from the generation queue item
-            Object.keys(item.fields).forEach(fc => {
-                const fieldInfo = item.fields[fc];
-                docData[fc] = fieldInfo.value;
-                docMeta[fc] = [{
-                    value: fieldInfo.value,
-                    x: fieldInfo.x,
-                    y: fieldInfo.y,
-                    width: fieldInfo.width,
-                    height: fieldInfo.height,
-                    page: fieldInfo.page,
-                    label: fieldInfo.label || fc,
-                    rotation: 0
-                }];
+                    this._log(log, `Generated ${docName} (${Object.keys(item.fields).length} fields)`, 'success');
+                }, 120);
             });
+        };
 
-            const docName = `${item.caseId} - ${item.docInstance}`;
+        await processNext();
 
-            generatedDocs.push({
-                id: `doc_${Date.now()}_${current}`,
-                templateId: templateId,
-                name: docName,
-                caseId: item.caseId,
-                docInstance: item.docInstance,
-                data: docData,
-                meta: docMeta,
-                format: format,
-                generatedAt: new Date(),
-                preserveFormat: preserveFormat,
-                maxTemplatePage: maxTemplatePage,
-            });
+        // Store all generated documents
+        DocumentStore.addGeneratedDocuments(generatedDocs);
 
-            this._log(log, `Generated ${docName} (${Object.keys(item.fields).length} fields)`, 'success');
-        }, 120);
+        this._log(log, `\n✓ All ${actualCount} documents generated successfully!`, 'success');
+        this._log(log, `→ ${actualCount} documents ready for export. Go to Export page to download.`, 'info');
+
+        // Show completion actions
+        this._showCompletionActions(actualCount);
+
+        this.isGenerating = false;
+        generateBtn.disabled = false;
+        generateBtn.innerHTML = `
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 2v14M2 9h14"/></svg>
+            Generate Documents
+        `;
     },
 
     _log(container, message, type = 'msg') {
