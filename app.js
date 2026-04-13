@@ -1990,83 +1990,87 @@ const ExportPage = {
     },
 
     async _buildPDFs() {
-        const docs = DocumentStore.generatedDocuments;
-        if (!docs || docs.length === 0) return null;
-        
-        if (!window.PDFLib) {
-            console.error('PDF-lib is not currently loaded.');
-            return null;
-        }
-
-        const { PDFDocument, rgb, StandardFonts } = window.PDFLib;
-        const outPdf = await PDFDocument.create();
-        
-        let font;
         try {
-            font = await outPdf.embedFont(StandardFonts?.Helvetica || 'Helvetica');
-        } catch(e) {
-            console.warn('Fallback font embed failed:', e);
-        }
-
-        for (let i = 0; i < docs.length; i++) {
-            const doc = docs[i];
-            const template = DocumentStore.uploadedTemplates.find(t => t.id === doc.templateId);
+            const docs = DocumentStore.generatedDocuments;
+            if (!docs || docs.length === 0) return null;
             
-            let templatePdfDoc;
-            if (template && template._file) {
-                 const arrayBuffer = await new Promise((resolve, reject) => {
-                     const r = new FileReader();
-                     r.onload = e => resolve(e.target.result);
-                     r.onerror = reject;
-                     r.readAsArrayBuffer(template._file);
-                 });
-                 templatePdfDoc = await PDFDocument.load(arrayBuffer);
-            } else {
-                 templatePdfDoc = await PDFDocument.create();
-                 templatePdfDoc.addPage([595.28, 841.89]); // A4 fallback
+            if (!window.PDFLib) {
+                alert('PDF-lib is not currently loaded.');
+                return null;
             }
-            
-            const copiedPages = await outPdf.copyPages(templatePdfDoc, templatePdfDoc.getPageIndices());
-            const startIdx = outPdf.getPageCount();
-            copiedPages.forEach(p => outPdf.addPage(p));
-            
-            const allPages = outPdf.getPages();
-            
-            Object.keys(doc.data).forEach(field => {
-                 const meta = doc.meta && doc.meta[field];
-                 const text = String(doc.data[field] || '');
-                 
-                 if (meta && typeof meta.x === 'number' && !isNaN(meta.x) && typeof meta.y === 'number' && !isNaN(meta.y)) {
-                      const pageOffset = Math.max(0, (parseInt(meta.page) || 1) - 1);
-                      const targetIdx = startIdx + pageOffset;
-                      
-                      if (targetIdx < allPages.length && font) {
-                           const page = allPages[targetIdx];
-                           const { height } = page.getSize();
-                           
-                           // Draw using pdf-lib bottom-up coordinates
-                           page.drawText(text, {
-                               x: meta.x,
-                               y: height - meta.y, 
-                               font: font,
-                               size: 11,
-                               color: rgb(0.8, 0, 0)
-                           });
-                      }
-                 }
-            });
-        }
 
-        const pdfBytes = await outPdf.save();
-        const blob = new Blob([pdfBytes], { type: "application/pdf" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'generated_documents_batch_custom.pdf';
-        a.click();
-        
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-        return 'generated_documents_batch_custom.pdf';
+            const { PDFDocument, rgb, StandardFonts } = window.PDFLib;
+            const outPdf = await PDFDocument.create();
+            
+            let font;
+            try {
+                font = await outPdf.embedFont(StandardFonts?.Helvetica || 'Helvetica');
+            } catch(e) {
+                console.warn('Fallback font embed failed:', e);
+            }
+
+            for (let i = 0; i < docs.length; i++) {
+                const doc = docs[i];
+                const template = DocumentStore.uploadedTemplates.find(t => t.id === doc.templateId);
+                
+                let templatePdfDoc;
+                if (template && template._file) {
+                     const arrayBuffer = await new Promise((resolve, reject) => {
+                         const r = new FileReader();
+                         r.onload = e => resolve(e.target.result);
+                         r.onerror = e => reject(new Error('FileReader Error'));
+                         r.readAsArrayBuffer(template._file);
+                     });
+                     templatePdfDoc = await PDFDocument.load(arrayBuffer);
+                } else {
+                     templatePdfDoc = await PDFDocument.create();
+                     templatePdfDoc.addPage([595.28, 841.89]); // A4 fallback
+                }
+                
+                const copiedPages = await outPdf.copyPages(templatePdfDoc, templatePdfDoc.getPageIndices());
+                const startIdx = outPdf.getPageCount();
+                copiedPages.forEach(p => outPdf.addPage(p));
+                
+                const allPages = outPdf.getPages();
+                
+                Object.keys(doc.data || {}).forEach(field => {
+                     const meta = doc.meta && doc.meta[field];
+                     const text = String(doc.data[field] || '');
+                     
+                     if (meta && typeof meta.x === 'number' && !isNaN(meta.x) && typeof meta.y === 'number' && !isNaN(meta.y)) {
+                          const pageOffset = Math.max(0, (parseInt(meta.page) || 1) - 1);
+                          const targetIdx = startIdx + pageOffset;
+                          
+                          if (targetIdx < allPages.length && font) {
+                               const page = allPages[targetIdx];
+                               const { height } = page.getSize();
+                               
+                               page.drawText(text, {
+                                   x: meta.x,
+                                   y: height - meta.y, 
+                                   font: font,
+                                   size: 11,
+                                   color: rgb(0.8, 0, 0)
+                               });
+                          }
+                     }
+                });
+            }
+
+            const pdfBytes = await outPdf.save();
+            const blob = new Blob([pdfBytes], { type: "application/pdf" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'generated_documents_batch_custom.pdf';
+            a.click();
+            
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            return 'generated_documents_batch_custom.pdf';
+        } catch (e) {
+            alert("Error generating PDF: " + e.message + "\n" + (e.stack ? e.stack.substring(0, 300) : ""));
+            throw e;
+        }
     },
 
     updateExportCounts() {
