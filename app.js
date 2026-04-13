@@ -2002,11 +2002,22 @@ const ExportPage = {
             const { PDFDocument, rgb, StandardFonts } = window.PDFLib;
             const outPdf = await PDFDocument.create();
             
+            if (window.fontkit) {
+                outPdf.registerFontkit(window.fontkit);
+            }
+            
             let font;
             try {
-                font = await outPdf.embedFont(StandardFonts?.Helvetica || 'Helvetica');
+                const fontUrl = 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Regular.ttf';
+                const fontBuffer = await fetch(fontUrl).then(res => res.arrayBuffer());
+                font = await outPdf.embedFont(fontBuffer, { subset: true });
             } catch(e) {
-                console.warn('Fallback font embed failed:', e);
+                console.warn('Custom Roboto font fetch failed, using fallback Helvetica:', e);
+                try {
+                    font = await outPdf.embedFont(StandardFonts?.Helvetica || 'Helvetica');
+                } catch(err) {
+                    console.warn('Fallback font embed failed:', err);
+                }
             }
 
             for (let i = 0; i < docs.length; i++) {
