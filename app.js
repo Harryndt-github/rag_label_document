@@ -1749,12 +1749,33 @@ const GeneratePage = {
 
         const tpl = DocumentStore.uploadedTemplates.find(t => t.id === select.value);
         if (tpl) {
+            const masterSchema = this._masterFieldSchema;
+            const allDocInstances = this._allDocInstances;
+            const maxTemplatePage = this._maxTemplatePage || 1;
+            const fieldCount = masterSchema ? Object.keys(masterSchema).length : DocumentStore.ocrData.length;
+            const docInstCount = allDocInstances ? Object.keys(allDocInstances).length : 0;
+
+            // Count fields per page for multi-page display
+            let pageBreakdown = '';
+            if (masterSchema && maxTemplatePage > 1) {
+                const pageFieldCounts = {};
+                Object.values(masterSchema).forEach(f => {
+                    const p = f.page || 1;
+                    pageFieldCounts[p] = (pageFieldCounts[p] || 0) + 1;
+                });
+                pageBreakdown = Object.entries(pageFieldCounts)
+                    .map(([p, c]) => `P${p}: ${c}`)
+                    .join(' | ');
+            }
+
             infoEl.innerHTML = `
                 <div class="template-info-row"><span>File:</span><strong>${tpl.name}</strong></div>
                 <div class="template-info-row"><span>Size:</span><span>${tpl.size}</span></div>
-                <div class="template-info-row"><span>Pages:</span><span>${tpl.pages}</span></div>
+                <div class="template-info-row"><span>Template Pages:</span><span>${maxTemplatePage > 1 ? maxTemplatePage + ' pages' : (tpl.pages || 1) + ' page(s)'}</span></div>
                 <div class="template-info-row"><span>Uploaded:</span><span>${tpl.uploadedAt.toLocaleDateString()}</span></div>
-                <div class="template-info-row"><span>Fields:</span><span>${DocumentStore.ocrData.length} OCR labels</span></div>
+                <div class="template-info-row"><span>Schema Fields:</span><span style="color:var(--color-accent);font-weight:600">${fieldCount} field(s)</span></div>
+                ${pageBreakdown ? `<div class="template-info-row"><span>Page Layout:</span><span style="font-family:var(--font-mono);font-size:10px">${pageBreakdown}</span></div>` : ''}
+                ${docInstCount > 0 ? `<div class="template-info-row"><span>Excel Instances:</span><span style="color:var(--color-success);font-weight:600">${docInstCount} document(s)</span></div>` : ''}
             `;
             infoEl.style.display = 'block';
         } else {
@@ -1822,39 +1843,69 @@ const GeneratePage = {
         if (!this.csvData) return;
         let newFields = [];
         if (this.csvData.headers.includes('field_code') && this.csvData.headers.includes('value')) {
-             // Build master schema from first complete document_instance
-             // Find the first document_instance and collect ALL its field_codes with coordinates
-             const firstDocGroup = {};
-             let firstDocKey = null;
+             // Build COMPLETE master schema by scanning ALL rows across ALL document instances
+             // Collect every unique field_code with its coordinates, aggregated by page
+             const masterSchema = {};
+             const allDocInstances = {}; // key → { caseId, docInstance, fields: { field_code: { value, x, y, ... } } }
+             let maxPage = 1;
+
              for (const r of this.csvData.rows) {
-                 const caseId = r.case_id || 'case_unknown';
-                 const docInst = r.document_instance || r.file_name || 'doc_unknown';
-                 const key = `${caseId}___${docInst}`;
-                 if (!firstDocKey) firstDocKey = key;
-                 if (key !== firstDocKey) continue;
-                 if (r.field_code && !firstDocGroup[r.field_code]) {
-                     firstDocGroup[r.field_code] = {
-                         x: parseFloat(r.x) || 0,
-                         y: parseFloat(r.y) || 0,
-                         width: parseFloat(r.width) || 80,
-                         height: parseFloat(r.height) || 16,
-                         page: parseInt(r.page) || 1
+                 const fieldCode = (r.field_code || '').trim();
+                 if (!fieldCode) continue;
+
+                 const caseId = (r.case_id || 'case_unknown').trim();
+                 const docInst = (r.document_instance || r.file_name || 'doc_unknown').trim();
+                 const page = parseInt(r.page) || 1;
+                 const x = parseFloat(r.x) || 0;
+                 const y = parseFloat(r.y) || 0;
+                 const width = parseFloat(r.width) || 80;
+                 const height = parseFloat(r.height) || 16;
+                 const value = (r.value !== undefined && r.value !== null) ? String(r.value) : '';
+                 const label = (r.label || r.field_label || fieldCode).trim();
+
+                 if (page > maxPage) maxPage = page;
+
+                 // Build master schema — keep the first occurrence's coordinates for each field_code
+                 if (!masterSchema[fieldCode]) {
+                     masterSchema[fieldCode] = {
+                         x, y, width, height, page, label
                      };
                  }
+
+                 // Build per-document-instance data for later use
+                 const instKey = `${caseId}___${docInst}`;
+                 if (!allDocInstances[instKey]) {
+                     allDocInstances[instKey] = { caseId, docInstance: docInst, fields: {} };
+                 }
+                 allDocInstances[instKey].fields[fieldCode] = {
+                     value, x, y, width, height, page, label
+                 };
              }
-             // Store master schema for generation
-             this._masterFieldSchema = firstDocGroup;
-             newFields = Object.keys(firstDocGroup).map(code => ({
-                 field: code, label: code, type: 'Alphanumeric'
+
+             // Store master schema and document instances for generation
+             this._masterFieldSchema = masterSchema;
+             this._allDocInstances = allDocInstances;
+             this._maxTemplatePage = maxPage;
+
+             newFields = Object.keys(masterSchema).map(code => ({
+                 field: code, label: masterSchema[code].label || code, type: 'Alphanumeric'
              }));
+
+             console.log(`[SyncCSV] Master schema: ${Object.keys(masterSchema).length} fields across ${maxPage} pages.`);
+             console.log(`[SyncCSV] Document instances found: ${Object.keys(allDocInstances).length}`);
         } else {
              newFields = this.csvData.headers.map(h => ({ field: h, label: h, type: 'Alphanumeric' }));
+             this._masterFieldSchema = null;
+             this._allDocInstances = null;
+             this._maxTemplatePage = 1;
         }
         DocumentStore.ocrData = newFields;
         this.updateTemplateInfo();
     },
 
     _masterFieldSchema: null,
+    _allDocInstances: null,
+    _maxTemplatePage: 1,
 
     startGeneration() {
         if (this.isGenerating) return;
@@ -1896,68 +1947,86 @@ const GeneratePage = {
         const generatedDocs = [];
         let current = 0;
 
-        // Build generation data:
-        // If master schema exists (from imported data), use it as layout blueprint
-        // and generate NEW synthetic values for each case_id
         const masterSchema = this._masterFieldSchema;
-        const actualCount = requestedCount;
+        const allDocInstances = this._allDocInstances;
+        const maxTemplatePage = this._maxTemplatePage || 1;
 
-        if (masterSchema && Object.keys(masterSchema).length > 0) {
-            this._log(log, `Master Labels: ${Object.keys(masterSchema).length} field_code(s) — ${Object.keys(masterSchema).join(', ')}`, 'info');
-            this._log(log, `Generating ${actualCount} unique case_id(s), each with all ${Object.keys(masterSchema).length} fields`, 'info');
-        } else {
-            this._log(log, `No master schema — generating ${actualCount} documents with ${fields.length} random fields`, 'info');
-        }
+        // Determine actual generation source:
+        // If Excel data has document instances, use those as the primary data source
+        const useExcelData = allDocInstances && Object.keys(allDocInstances).length > 0;
+        let generationQueue = []; // each item = { caseId, docInstance, fields }
 
-        const interval = setInterval(() => {
-            current++;
-            const pct = (current / actualCount) * 100;
-            fill.style.width = pct + '%';
-            countEl.textContent = `${current} / ${actualCount}`;
-
-            const docData = {};
-            const docMeta = {};
-            let rowCaseId = `CASE_${String(current).padStart(4, '0')}`;
-            let rowDocInstance = `DOC_${String(current).padStart(3, '0')}`;
-
-            if (masterSchema && Object.keys(masterSchema).length > 0) {
-                // Generate a new document using master schema layout + new synthetic values
+        if (useExcelData) {
+            // Use real data from Excel rows
+            const instKeys = Object.keys(allDocInstances);
+            instKeys.forEach(key => {
+                const inst = allDocInstances[key];
+                generationQueue.push({
+                    caseId: inst.caseId,
+                    docInstance: inst.docInstance,
+                    fields: inst.fields
+                });
+            });
+            this._log(log, `Excel data loaded: ${generationQueue.length} document instance(s) from uploaded file`, 'info');
+        } else if (masterSchema && Object.keys(masterSchema).length > 0) {
+            // Use master schema layout with synthetic random values
+            for (let i = 0; i < requestedCount; i++) {
+                const synthFields = {};
                 Object.keys(masterSchema).forEach(fc => {
                     const coord = masterSchema[fc];
-                    const syntheticValue = DocumentStore.generateRandomValue(fc);
-                    docData[fc] = syntheticValue;
-                    docMeta[fc] = [{
-                        value: syntheticValue,
+                    synthFields[fc] = {
+                        value: DocumentStore.generateRandomValue(fc),
                         x: coord.x,
                         y: coord.y,
                         width: coord.width,
                         height: coord.height,
                         page: coord.page,
-                        rotation: 0
-                    }];
+                        label: coord.label
+                    };
                 });
-            } else {
-                // Fallback: no imported data, use ocrData fields
-                fields.forEach(f => {
-                    docData[f.field] = DocumentStore.generateRandomValue(f.field);
+                generationQueue.push({
+                    caseId: `CASE_${String(i + 1).padStart(4, '0')}`,
+                    docInstance: `DOC_${String(i + 1).padStart(3, '0')}`,
+                    fields: synthFields
                 });
             }
+            this._log(log, `Master schema: ${Object.keys(masterSchema).length} field(s) across ${maxTemplatePage} page(s)`, 'info');
+            this._log(log, `Generating ${requestedCount} synthetic document(s)`, 'info');
+        } else {
+            // No schema at all — use ocrData fields with random values
+            for (let i = 0; i < requestedCount; i++) {
+                const synthFields = {};
+                fields.forEach(f => {
+                    synthFields[f.field] = {
+                        value: DocumentStore.generateRandomValue(f.field),
+                        x: 50,
+                        y: 50 + Object.keys(synthFields).length * 20,
+                        width: 200,
+                        height: 16,
+                        page: 1,
+                        label: f.label
+                    };
+                });
+                generationQueue.push({
+                    caseId: `CASE_${String(i + 1).padStart(4, '0')}`,
+                    docInstance: `DOC_${String(i + 1).padStart(3, '0')}`,
+                    fields: synthFields
+                });
+            }
+            this._log(log, `No master schema — generating ${requestedCount} documents with ${fields.length} random fields`, 'info');
+        }
 
-            generatedDocs.push({
-                id: `doc_${Date.now()}_${current}`,
-                templateId: templateId,
-                name: rowDocInstance ? `${rowCaseId} - ${rowDocInstance}` : `${template.name} - ${current}`,
-                caseId: rowCaseId,
-                docInstance: rowDocInstance,
-                data: docData,
-                meta: docMeta,
-                format: format,
-                generatedAt: new Date(),
-                preserveFormat: preserveFormat,
-            });
+        const actualCount = generationQueue.length;
+        countEl.textContent = `0 / ${actualCount}`;
 
-            this._log(log, `Generated ${generatedDocs[generatedDocs.length-1].name}`, 'success');
+        this._log(log, `Total documents to generate: ${actualCount}`, 'info');
+        if (masterSchema) {
+            const fieldList = Object.keys(masterSchema).slice(0, 15).join(', ');
+            const more = Object.keys(masterSchema).length > 15 ? ` ... +${Object.keys(masterSchema).length - 15} more` : '';
+            this._log(log, `Fields: ${fieldList}${more}`, 'info');
+        }
 
+        const interval = setInterval(() => {
             if (current >= actualCount) {
                 clearInterval(interval);
 
@@ -1976,8 +2045,53 @@ const GeneratePage = {
                     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 2v14M2 9h14"/></svg>
                     Generate Documents
                 `;
+                return;
             }
-        }, 200);
+
+            const item = generationQueue[current];
+            current++;
+
+            const pct = (current / actualCount) * 100;
+            fill.style.width = pct + '%';
+            countEl.textContent = `${current} / ${actualCount}`;
+
+            const docData = {};
+            const docMeta = {};
+
+            // Build docData and docMeta from the generation queue item
+            Object.keys(item.fields).forEach(fc => {
+                const fieldInfo = item.fields[fc];
+                docData[fc] = fieldInfo.value;
+                docMeta[fc] = [{
+                    value: fieldInfo.value,
+                    x: fieldInfo.x,
+                    y: fieldInfo.y,
+                    width: fieldInfo.width,
+                    height: fieldInfo.height,
+                    page: fieldInfo.page,
+                    label: fieldInfo.label || fc,
+                    rotation: 0
+                }];
+            });
+
+            const docName = `${item.caseId} - ${item.docInstance}`;
+
+            generatedDocs.push({
+                id: `doc_${Date.now()}_${current}`,
+                templateId: templateId,
+                name: docName,
+                caseId: item.caseId,
+                docInstance: item.docInstance,
+                data: docData,
+                meta: docMeta,
+                format: format,
+                generatedAt: new Date(),
+                preserveFormat: preserveFormat,
+                maxTemplatePage: maxTemplatePage,
+            });
+
+            this._log(log, `Generated ${docName} (${Object.keys(item.fields).length} fields)`, 'success');
+        }, 120);
     },
 
     _log(container, message, type = 'msg') {
@@ -2170,11 +2284,15 @@ const ExportPage = {
     _buildCSV() {
         const docs = DocumentStore.generatedDocuments;
         const fields = Object.keys(docs[0].data);
-        const headers = ['document_name', 'template', 'format', 'generated_at', ...fields];
+        const headers = ['case_id', 'document_instance', 'document_name', 'template', 'format', 'generated_at', ...fields];
         const rows = docs.map(doc => {
+            const tpl = DocumentStore.uploadedTemplates.find(t => t.id === doc.templateId);
+            const tplName = tpl ? tpl.name : 'N/A';
             const base = [
+                `"${doc.caseId || ''}"`,
+                `"${doc.docInstance || ''}"`,
                 `"${doc.name}"`,
-                `"${doc.templateName}"`,
+                `"${tplName}"`,
                 `"${doc.format}"`,
                 `"${doc.generatedAt.toISOString()}"`,
             ];
@@ -2193,14 +2311,20 @@ const ExportPage = {
             exportedAt: new Date().toISOString(),
             totalDocuments: docs.length,
             schema: DocumentStore.ocrData.map(f => ({ field: f.field, label: f.label, type: f.type })),
-            documents: docs.map(doc => ({
-                name: doc.name,
-                template: doc.templateName,
-                format: doc.format,
-                generatedAt: doc.generatedAt.toISOString(),
-                preserveFormat: doc.preserveFormat,
-                extractedData: doc.data,
-            })),
+            documents: docs.map(doc => {
+                const tpl = DocumentStore.uploadedTemplates.find(t => t.id === doc.templateId);
+                return {
+                    name: doc.name,
+                    caseId: doc.caseId,
+                    docInstance: doc.docInstance,
+                    template: tpl ? tpl.name : 'N/A',
+                    format: doc.format,
+                    generatedAt: doc.generatedAt.toISOString(),
+                    preserveFormat: doc.preserveFormat,
+                    extractedData: doc.data,
+                    fieldMeta: doc.meta,
+                };
+            }),
         };
         const json = JSON.stringify(exportData, null, 2);
         const filename = 'ocr_structured_data.json';
@@ -2210,19 +2334,24 @@ const ExportPage = {
 
     _buildSummary() {
         const docs = DocumentStore.generatedDocuments;
+        const firstTpl = DocumentStore.uploadedTemplates.find(t => t.id === docs[0]?.templateId);
         let report = '═══════════════════════════════════════════════════════════\n';
         report += '  INSIGHT LEDGER — Document Generation Report\n';
         report += '═══════════════════════════════════════════════════════════\n\n';
         report += `Generated: ${new Date().toLocaleString()}\n`;
         report += `Total Documents: ${docs.length}\n`;
-        report += `Template: ${docs[0]?.templateName || 'N/A'}\n`;
+        report += `Template: ${firstTpl?.name || 'N/A'}\n`;
         report += `Format: ${docs[0]?.format || 'N/A'}\n\n`;
         report += '───────────────────────────────────────────────────────────\n\n';
         docs.forEach((doc, i) => {
             report += `Document ${i + 1}: ${doc.name}\n`;
+            report += `  Case ID: ${doc.caseId || 'N/A'}\n`;
+            report += `  Doc Instance: ${doc.docInstance || 'N/A'}\n`;
             report += `  Generated: ${doc.generatedAt.toLocaleString()}\n`;
             Object.entries(doc.data).forEach(([key, val]) => {
-                report += `  ${key}: ${val}\n`;
+                const meta = doc.meta && doc.meta[key] && doc.meta[key][0];
+                const pageInfo = meta ? ` [Page ${meta.page || 1}]` : '';
+                report += `  ${key}: ${val}${pageInfo}\n`;
             });
             report += '\n';
         });
@@ -2257,6 +2386,19 @@ const ExportPage = {
                 console.warn('Custom Roboto font fetch failed:', e);
             }
 
+            // Pre-load the template PDF bytes once to avoid reading the file N times
+            let cachedTemplateBytes = null;
+            const firstDoc = docs[0];
+            const templateRef = DocumentStore.uploadedTemplates.find(t => t.id === firstDoc.templateId);
+            if (templateRef && templateRef._file) {
+                cachedTemplateBytes = await new Promise((resolve, reject) => {
+                    const r = new FileReader();
+                    r.onload = e => resolve(e.target.result);
+                    r.onerror = e => reject(new Error('FileReader Error'));
+                    r.readAsArrayBuffer(templateRef._file);
+                });
+            }
+
             for (let i = 0; i < docs.length; i++) {
                 const doc = docs[i];
                 const caseId = doc.caseId || 'Uncategorized';
@@ -2275,29 +2417,60 @@ const ExportPage = {
                     font = await outPdf.embedFont(StandardFonts?.Helvetica || 'Helvetica');
                 }
 
-                const template = DocumentStore.uploadedTemplates.find(t => t.id === doc.templateId);
-                
                 let templatePdfDoc;
-                if (template && template._file) {
-                     const arrayBuffer = await new Promise((resolve, reject) => {
-                         const r = new FileReader();
-                         r.onload = e => resolve(e.target.result);
-                         r.onerror = e => reject(new Error('FileReader Error'));
-                         r.readAsArrayBuffer(template._file);
-                     });
-                     templatePdfDoc = await PDFDocument.load(arrayBuffer);
+                if (cachedTemplateBytes) {
+                     templatePdfDoc = await PDFDocument.load(cachedTemplateBytes.slice(0));
                 } else {
                      templatePdfDoc = await PDFDocument.create();
-                     templatePdfDoc.addPage([595.28, 841.89]); // A4 fallback
+                     const maxPage = doc.maxTemplatePage || 1;
+                     for (let p = 0; p < maxPage; p++) {
+                         templatePdfDoc.addPage([595.28, 841.89]); // A4 fallback
+                     }
                 }
                 
-                const copiedPages = await outPdf.copyPages(templatePdfDoc, templatePdfDoc.getPageIndices());
+                // Copy ALL pages from template
+                const templatePageIndices = templatePdfDoc.getPageIndices();
+                const copiedPages = await outPdf.copyPages(templatePdfDoc, templatePageIndices);
                 const startIdx = outPdf.getPageCount();
                 copiedPages.forEach(p => outPdf.addPage(p));
                 
                 const allPages = outPdf.getPages();
                 
-                // Draw visually descriptive labels to output document instances
+                // ── STEP 1: WHITE-BOX over old field values ──
+                // For each field's coordinate, draw a white rectangle to cover the original content
+                // This ensures old template values are replaced, not overlaid
+                Object.keys(doc.data || {}).forEach(field => {
+                     const metas = doc.meta && doc.meta[field];
+                     if (!metas || !Array.isArray(metas)) return;
+                     
+                     metas.forEach(meta => {
+                         if (typeof meta.x === 'number' && !isNaN(meta.x) && typeof meta.y === 'number' && !isNaN(meta.y)) {
+                              const pageOffset = Math.max(0, (parseInt(meta.page) || 1) - 1);
+                              const targetIdx = startIdx + pageOffset;
+                              
+                              if (targetIdx < allPages.length) {
+                                   const page = allPages[targetIdx];
+                                   const { height: pageH } = page.getSize();
+                                   
+                                   const w = meta.width || 80;
+                                   const h = meta.height || 16;
+                                   const pdfY = pageH - meta.y - h;
+                                   
+                                   // White-box: cover old content completely
+                                   page.drawRectangle({
+                                       x: meta.x - 1,
+                                       y: pdfY - 1,
+                                       width: w + 2,
+                                       height: h + 2,
+                                       color: rgb(1, 1, 1),  // Pure white
+                                       borderWidth: 0
+                                   });
+                              }
+                         }
+                     });
+                });
+
+                // ── STEP 2: Draw new values on top of white-boxed areas ──
                 Object.keys(doc.data || {}).forEach(field => {
                      const metas = doc.meta && doc.meta[field];
                      if (!metas || !Array.isArray(metas)) return;
@@ -2309,40 +2482,40 @@ const ExportPage = {
                               
                               if (targetIdx < allPages.length && font) {
                                    const page = allPages[targetIdx];
-                                   const { height: pageH } = page.getSize();
+                                   const { height: pageH, width: pageW } = page.getSize();
                                    
                                    const w = meta.width || 80;
                                    const h = meta.height || 16;
-                                   // Convert top-left (y) to pdf-lib bottom-left
                                    const pdfY = pageH - meta.y - h;
                                    
-                                   // Draw Bounding Box indicator
-                                   page.drawRectangle({
-                                       x: meta.x,
-                                       y: pdfY,
-                                       width: w,
-                                       height: h,
-                                       borderColor: rgb(0.9, 0.1, 0.1),
-                                       borderWidth: 1,
-                                       color: rgb(0.98, 0.9, 0.9)
-                                   });
+                                   // Calculate appropriate font size to fit the bounding box
+                                   const textValue = String(meta.value || '');
+                                   let fontSize = Math.min(h * 0.7, 11);
+                                   if (fontSize < 6) fontSize = 6;
                                    
-                                   // Draw Value
-                                   page.drawText(String(meta.value || ''), {
+                                   // Truncate text to fit width
+                                   let displayText = textValue;
+                                   try {
+                                       const textWidth = font.widthOfTextAtSize(displayText, fontSize);
+                                       if (textWidth > w - 4) {
+                                           // Reduce font size or truncate
+                                           const ratio = (w - 4) / textWidth;
+                                           if (ratio > 0.6) {
+                                               fontSize = Math.max(6, fontSize * ratio);
+                                           } else {
+                                               const maxChars = Math.floor(displayText.length * ratio);
+                                               displayText = displayText.substring(0, Math.max(1, maxChars - 1)) + '…';
+                                           }
+                                       }
+                                   } catch(e) { /* ignore font measurement errors */ }
+                                   
+                                   // Draw the new value text
+                                   page.drawText(displayText, {
                                        x: meta.x + 2,
-                                       y: pdfY + 4, 
+                                       y: pdfY + (h - fontSize) / 2 + 1,
                                        font: font,
-                                       size: 10,
-                                       color: rgb(0.7, 0, 0)
-                                   });
-                                   
-                                   // Draw Field_Code Label above the box
-                                   page.drawText(`[${field}]`, {
-                                       x: meta.x,
-                                       y: pdfY + h + 2,
-                                       font: font,
-                                       size: 8,
-                                       color: rgb(0.1, 0.1, 0.8)
+                                       size: fontSize,
+                                       color: rgb(0.05, 0.05, 0.15)
                                    });
                               }
                          }
@@ -2355,6 +2528,34 @@ const ExportPage = {
                 const safeCaseId = caseId.replace(/[^a-zA-Z0-9.\-_]/g, '_');
                 const safeDocInstance = docInstance.replace(/[^a-zA-Z0-9.\-_]/g, '_');
                 zip.folder(safeCaseId).file(`${safeDocInstance}.pdf`, pdfBytes);
+            }
+
+            // Also generate an Excel summary file with all document data
+            if (window.XLSX) {
+                const summaryData = [];
+                docs.forEach(doc => {
+                    Object.keys(doc.data || {}).forEach(field => {
+                        const metas = doc.meta && doc.meta[field];
+                        const meta = (metas && metas[0]) || {};
+                        summaryData.push({
+                            case_id: doc.caseId,
+                            document_instance: doc.docInstance,
+                            field_code: field,
+                            label: meta.label || field,
+                            value: doc.data[field],
+                            page: meta.page || 1,
+                            x: meta.x || 0,
+                            y: meta.y || 0,
+                            width: meta.width || 80,
+                            height: meta.height || 16
+                        });
+                    });
+                });
+                const ws = XLSX.utils.json_to_sheet(summaryData);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Generated_Data');
+                const xlsxBytes = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+                zip.file('generated_data_summary.xlsx', xlsxBytes);
             }
 
             const zipBlob = await zip.generateAsync({ type: "blob" });
