@@ -1648,25 +1648,33 @@ const GeneratePage = {
         let normalizedData = [];
         if ((dataSource === 'CSV Upload' || dataSource === 'Excel Upload') && this.csvData) {
             if (this.csvData.headers.includes('field_code') && this.csvData.headers.includes('value')) {
-                // Long format: group by case_id
+                // Long format: group by case_id AND document_instance to separate document sets
                 const grouped = {};
                 this.csvData.rows.forEach(r => {
-                    const id = r.case_id || r.file_name || 'doc_1';
-                    if (!grouped[id]) grouped[id] = {};
-                    grouped[id][r.field_code] = {
+                    const caseId = r.case_id || 'case_unknown';
+                    const docInstance = r.document_instance || r.file_name || 'doc_unknown';
+                    const id = `${caseId}___${docInstance}`;
+                    
+                    if (!grouped[id]) {
+                        grouped[id] = { caseId, docInstance, fields: {} };
+                    }
+                    if (!grouped[id].fields[r.field_code]) {
+                        grouped[id].fields[r.field_code] = [];
+                    }
+                    grouped[id].fields[r.field_code].push({
                         value: r.value,
                         x: parseFloat(r.x),
                         y: parseFloat(r.y),
-                        width: r.width,
-                        height: r.height,
+                        width: parseFloat(r.width) || 80,
+                        height: parseFloat(r.height) || 16,
                         page: parseInt(r.page) || 1,
-                        rotation: r.page_rotation
-                    };
+                        rotation: parseFloat(r.rotation) || 0
+                    });
                 });
                 normalizedData = Object.values(grouped);
             } else {
                 // Wide format
-                normalizedData = this.csvData.rows;
+                normalizedData = this.csvData.rows.map(r => ({ caseId: 'N/A', docInstance: 'N/A', fields: r }));
             }
         }
 
@@ -1679,42 +1687,52 @@ const GeneratePage = {
             fill.style.width = pct + '%';
             countEl.textContent = `${current} / ${actualCount}`;
 
-            // Generate actual document data
+            // Generate actual document data for each document instance
             const docData = {};
             const docMeta = {};
-            fields.forEach(f => {
-                if (normalizedData.length > 0) {
-                    const row = normalizedData[(current - 1) % normalizedData.length];
-                    const cell = row[f.label] || row[f.field];
-                    if (cell !== undefined && typeof cell === 'object') {
-                        docData[f.field] = cell.value !== undefined ? String(cell.value) : '';
-                        docMeta[f.field] = cell;
-                    } else if (cell !== undefined) {
-                        docData[f.field] = String(cell);
-                    } else {
-                        docData[f.field] = DocumentStore.generateRandomValue(f.field);
-                    }
+            let rowCaseId = '';
+            let rowDocInstance = '';
+
+            if (normalizedData.length > 0) {
+                const row = normalizedData[(current - 1) % normalizedData.length];
+                rowCaseId = row.caseId || '';
+                rowDocInstance = row.docInstance || '';
+
+                if (row.caseId !== 'N/A') {
+                    // Long format assignments
+                    Object.keys(row.fields).forEach(fc => {
+                        const cellArray = row.fields[fc];
+                        docData[fc] = cellArray.map(c => c.value).join(', ');
+                        docMeta[fc] = cellArray;
+                    });
                 } else {
-                    docData[f.field] = DocumentStore.generateRandomValue(f.field);
+                    // Wide format assignments
+                    fields.forEach(f => {
+                        const cell = row.fields[f.label] || row.fields[f.field];
+                        docData[f.field] = cell !== undefined ? String(cell) : '';
+                        docMeta[f.field] = [{ value: cell }]; // Wrap in array for compatibility
+                    });
                 }
-            });
+            } else {
+                fields.forEach(f => {
+                    docData[f.field] = DocumentStore.generateRandomValue(f.field);
+                });
+            }
 
-            const docName = `${template.name.replace(/\.[^.]+$/, '')}_gen_${String(current).padStart(3, '0')}.${format === 'PDF' ? 'pdf' : format === 'PNG Image' ? 'png' : 'docx'}`;
-
-            const doc = {
+            generatedDocs.push({
                 id: `doc_${Date.now()}_${current}`,
-                name: docName,
-                templateId: template.id,
-                templateName: template.name,
+                templateId: templateId,
+                name: rowDocInstance ? `${rowCaseId} - ${rowDocInstance}` : `${template.name} - ${current}`,
+                caseId: rowCaseId,
+                docInstance: rowDocInstance,
                 data: docData,
                 meta: docMeta,
                 format: format,
                 generatedAt: new Date(),
                 preserveFormat: preserveFormat,
-            };
-            generatedDocs.push(doc);
+            });
 
-            this._log(log, `Generated ${docName}`, 'success');
+            this._log(log, `Generated ${generatedDocs[generatedDocs.length-1].name}`, 'success');
 
             if (current >= actualCount) {
                 clearInterval(interval);
@@ -2044,27 +2062,56 @@ const ExportPage = {
                 
                 const allPages = outPdf.getPages();
                 
+                // Draw visually descriptive labels to output document instances
                 Object.keys(doc.data || {}).forEach(field => {
-                     const meta = doc.meta && doc.meta[field];
-                     const text = String(doc.data[field] || '');
+                     const metas = doc.meta && doc.meta[field];
+                     if (!metas || !Array.isArray(metas)) return;
                      
-                     if (meta && typeof meta.x === 'number' && !isNaN(meta.x) && typeof meta.y === 'number' && !isNaN(meta.y)) {
-                          const pageOffset = Math.max(0, (parseInt(meta.page) || 1) - 1);
-                          const targetIdx = startIdx + pageOffset;
-                          
-                          if (targetIdx < allPages.length && font) {
-                               const page = allPages[targetIdx];
-                               const { height } = page.getSize();
-                               
-                               page.drawText(text, {
-                                   x: meta.x,
-                                   y: height - meta.y, 
-                                   font: font,
-                                   size: 11,
-                                   color: rgb(0.8, 0, 0)
-                               });
-                          }
-                     }
+                     metas.forEach(meta => {
+                         if (typeof meta.x === 'number' && !isNaN(meta.x) && typeof meta.y === 'number' && !isNaN(meta.y)) {
+                              const pageOffset = Math.max(0, (parseInt(meta.page) || 1) - 1);
+                              const targetIdx = startIdx + pageOffset;
+                              
+                              if (targetIdx < allPages.length && font) {
+                                   const page = allPages[targetIdx];
+                                   const { height: pageH } = page.getSize();
+                                   
+                                   const w = meta.width || 80;
+                                   const h = meta.height || 16;
+                                   // Convert top-left (y) to pdf-lib bottom-left
+                                   const pdfY = pageH - meta.y - h;
+                                   
+                                   // Draw Bounding Box indicator
+                                   page.drawRectangle({
+                                       x: meta.x,
+                                       y: pdfY,
+                                       width: w,
+                                       height: h,
+                                       borderColor: rgb(0.9, 0.1, 0.1),
+                                       borderWidth: 1,
+                                       color: rgb(0.98, 0.9, 0.9)
+                                   });
+                                   
+                                   // Draw Value
+                                   page.drawText(String(meta.value || ''), {
+                                       x: meta.x + 2,
+                                       y: pdfY + 4, 
+                                       font: font,
+                                       size: 10,
+                                       color: rgb(0.7, 0, 0)
+                                   });
+                                   
+                                   // Draw Field_Code Label above the box
+                                   page.drawText(`[${field}]`, {
+                                       x: meta.x,
+                                       y: pdfY + h + 2,
+                                       font: font,
+                                       size: 8,
+                                       color: rgb(0.1, 0.1, 0.8)
+                                   });
+                              }
+                         }
+                     });
                 });
             }
 
