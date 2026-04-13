@@ -1565,6 +1565,7 @@ const GeneratePage = {
                     this.csvData = { headers, rows: json };
                     const label = document.getElementById('gen-csv-label');
                     if (label) label.textContent = `✓ ${file.name} — ${json.length} rows loaded`;
+                    this._syncOcrDataFromCsv();
                 }
             };
             reader.readAsArrayBuffer(file);
@@ -1584,9 +1585,23 @@ const GeneratePage = {
                 this.csvData = { headers, rows };
                 const label = document.getElementById('gen-csv-label');
                 if (label) label.textContent = `✓ ${file.name} — ${rows.length} rows loaded`;
+                this._syncOcrDataFromCsv();
             };
             reader.readAsText(file);
         }
+    },
+
+    _syncOcrDataFromCsv() {
+        if (!this.csvData) return;
+        let newFields = [];
+        if (this.csvData.headers.includes('field_code') && this.csvData.headers.includes('value')) {
+             const uniqueCodes = [...new Set(this.csvData.rows.map(r => r.field_code).filter(Boolean))];
+             newFields = uniqueCodes.map(code => ({ field: code, label: code, type: 'Alphanumeric' }));
+        } else {
+             newFields = this.csvData.headers.map(h => ({ field: h, label: h, type: 'Alphanumeric' }));
+        }
+        DocumentStore.ocrData = newFields;
+        this.updateTemplateInfo();
     },
 
     startGeneration() {
