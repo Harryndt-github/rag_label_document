@@ -1653,7 +1653,15 @@ const GeneratePage = {
                 this.csvData.rows.forEach(r => {
                     const id = r.case_id || r.file_name || 'doc_1';
                     if (!grouped[id]) grouped[id] = {};
-                    grouped[id][r.field_code] = r.value;
+                    grouped[id][r.field_code] = {
+                        value: r.value,
+                        x: parseFloat(r.x),
+                        y: parseFloat(r.y),
+                        width: r.width,
+                        height: r.height,
+                        page: parseInt(r.page) || 1,
+                        rotation: r.page_rotation
+                    };
                 });
                 normalizedData = Object.values(grouped);
             } else {
@@ -1673,10 +1681,19 @@ const GeneratePage = {
 
             // Generate actual document data
             const docData = {};
+            const docMeta = {};
             fields.forEach(f => {
                 if (normalizedData.length > 0) {
                     const row = normalizedData[(current - 1) % normalizedData.length];
-                    docData[f.field] = row[f.label] || row[f.field] || DocumentStore.generateRandomValue(f.field);
+                    const cell = row[f.label] || row[f.field];
+                    if (cell !== undefined && typeof cell === 'object') {
+                        docData[f.field] = cell.value !== undefined ? String(cell.value) : '';
+                        docMeta[f.field] = cell;
+                    } else if (cell !== undefined) {
+                        docData[f.field] = String(cell);
+                    } else {
+                        docData[f.field] = DocumentStore.generateRandomValue(f.field);
+                    }
                 } else {
                     docData[f.field] = DocumentStore.generateRandomValue(f.field);
                 }
@@ -1690,6 +1707,7 @@ const GeneratePage = {
                 templateId: template.id,
                 templateName: template.name,
                 data: docData,
+                meta: docMeta,
                 format: format,
                 generatedAt: new Date(),
                 preserveFormat: preserveFormat,
@@ -1854,7 +1872,7 @@ const ExportPage = {
         const results = [];
         let index = 0;
 
-        const downloadNext = () => {
+        const downloadNext = async () => {
             if (index >= formats.length) {
                 // All done — show summary
                 btn.disabled = false;
@@ -1888,7 +1906,7 @@ const ExportPage = {
                         filename = this._buildSummary();
                         break;
                     case 'pdf':
-                        filename = this._buildPDFs();
+                        filename = await this._buildPDFs();
                         break;
                 }
                 success = true;
@@ -1971,59 +1989,68 @@ const ExportPage = {
         return filename;
     },
 
-    _buildPDFs() {
+    async _buildPDFs() {
         const docs = DocumentStore.generatedDocuments;
         if (!docs || docs.length === 0) return null;
         
-        const { jsPDF } = window.jspdf;
-        const pdf = new jsPDF();
-        
-        docs.forEach((doc, i) => {
-            if (i > 0) pdf.addPage();
+        if (!window.PDFLib) {
+            alert('PDF-lib is not currently loaded. Make sure the CDN script is present in index.html.');
+            return null;
+        }
+
+        const { PDFDocument, rgb, StandardFonts } = window.PDFLib;
+        const outPdf = await PDFDocument.create();
+        const font = await outPdf.embedFont(StandardFonts.Helvetica);
+
+        for (let i = 0; i < docs.length; i++) {
+            const doc = docs[i];
+            const template = DocumentStore.uploadedTemplates.find(t => t.id === doc.templateId);
             
-            // Header
-            pdf.setFontSize(16);
-            pdf.setTextColor(40, 40, 40);
-            pdf.text("Insight Ledger - Generated Document", 20, 20);
+            let templatePdfDoc;
+            if (template && template._file) {
+                 const arrayBuffer = await template._file.arrayBuffer();
+                 templatePdfDoc = await PDFDocument.load(arrayBuffer);
+            } else {
+                 templatePdfDoc = await PDFDocument.create();
+                 templatePdfDoc.addPage([595.28, 841.89]); // A4 fallback
+            }
             
-            pdf.setFontSize(12);
-            pdf.text(`Document Name: ${doc.name}`, 20, 35);
-            pdf.text(`Template: ${doc.templateName}`, 20, 45);
-            pdf.text(`Generated At: ${doc.generatedAt.toLocaleString()}`, 20, 55);
+            const pages = templatePdfDoc.getPages();
             
-            // Separator 
-            pdf.setLineWidth(0.5);
-            pdf.line(20, 65, 190, 65);
-            
-            // Extracted Fields
-            pdf.setFontSize(14);
-            pdf.setTextColor(0, 0, 0);
-            pdf.text("Data Values:", 20, 80);
-            
-            pdf.setFontSize(11);
-            let y = 95;
-            Object.entries(doc.data).forEach(([key, val]) => {
-                const safeKey = String(key).substring(0, 40);
-                const safeVal = String(val).substring(0, 80);
-                pdf.text(`${safeKey}: ${safeVal}`, 25, y);
-                y += 10;
-                
-                if (y > 280) {
-                    pdf.addPage();
-                    y = 20;
-                }
+            Object.keys(doc.data).forEach(field => {
+                 const meta = doc.meta && doc.meta[field];
+                 const text = String(doc.data[field] || '');
+                 
+                 if (meta && typeof meta.x === 'number' && !isNaN(meta.x) && typeof meta.y === 'number' && !isNaN(meta.y)) {
+                      const pageIdx = Math.max(0, (meta.page || 1) - 1);
+                      if (pageIdx < pages.length) {
+                           const page = pages[pageIdx];
+                           const { height } = page.getSize();
+                           page.drawText(text, {
+                               x: meta.x,
+                               y: height - meta.y, 
+                               font: font,
+                               size: 11,
+                               color: rgb(0.8, 0, 0)
+                           });
+                      }
+                 }
             });
             
-            // Footer
-            pdf.setFontSize(9);
-            pdf.setTextColor(150, 150, 150);
-            const pageCount = pdf.internal.getNumberOfPages();
-            pdf.text(`Page ${pageCount}`, 100, 290, { align: 'center' });
-        });
+            const copiedPages = await outPdf.copyPages(templatePdfDoc, templatePdfDoc.getPageIndices());
+            copiedPages.forEach(p => outPdf.addPage(p));
+        }
+
+        const pdfBytes = await outPdf.save();
+        const blob = new Blob([pdfBytes], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'generated_documents_batch_custom.pdf';
+        a.click();
         
-        const filename = 'generated_documents_batch.pdf';
-        pdf.save(filename);
-        return filename;
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        return 'generated_documents_batch_custom.pdf';
     },
 
     updateExportCounts() {
