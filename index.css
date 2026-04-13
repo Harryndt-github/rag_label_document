@@ -1144,17 +1144,145 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: var(--space-8);
+    padding: var(--space-4);
+    background: #F0F2F5;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    position: relative;
 }
 
-.preview-placeholder {
+/* Empty state */
+.preview-empty-state {
     text-align: center;
+    color: var(--color-text-muted);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.preview-empty-state p {
+    font-size: var(--text-sm);
+    margin: 0;
+}
+
+/* Canvas area */
+.preview-canvas-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+}
+
+.preview-canvas-area canvas {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--radius-sm);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+}
+
+/* Page nav */
+.preview-page-nav {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.preview-page-info {
+    font-family: var(--font-data);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    min-width: 48px;
+    text-align: center;
+}
+
+/* Compact select for card header */
+.config-select--sm {
+    padding: 4px 28px 4px 10px;
+    font-size: var(--text-xs);
+    border-radius: var(--radius-sm);
+    max-width: 200px;
+}
+
+/* ─── Step 4: Review Documents Grid ─── */
+.review-docs-card {
+    margin-top: var(--space-4);
+}
+
+.review-docs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+}
+
+.review-doc-card {
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border-light);
+    overflow: hidden;
+    transition: all var(--transition-base);
+    background: var(--color-bg-white);
+}
+
+.review-doc-card:hover {
+    border-color: var(--color-accent);
+    box-shadow: 0 2px 8px rgba(4, 83, 205, 0.1);
+    transform: translateY(-2px);
+}
+
+.review-doc-thumb-wrap {
+    background: #F0F2F5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 140px;
+    overflow: hidden;
+}
+
+.review-doc-thumb-wrap canvas {
+    max-width: 100%;
+    height: auto;
+    display: block;
+}
+
+.review-doc-meta {
+    padding: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.review-doc-name {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.review-doc-info {
+    font-family: var(--font-data);
+    font-size: 11px;
     color: var(--color-text-muted);
 }
 
-.preview-placeholder p {
-    margin-top: var(--space-3);
+.review-docs-empty {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-8);
+    text-align: center;
+}
+
+.review-docs-empty p {
+    color: var(--color-text-muted);
     font-size: var(--text-sm);
+    margin: 0;
 }
 
 .config-group {
@@ -1664,82 +1792,165 @@ body {
     min-height: 100%;
 }
 
-/* Simulated Document */
-.ocr-document-sim {
-    width: 600px;
-    min-height: 700px;
-    background: var(--color-bg-white);
+/* Upload Prompt State */
+.ocr-upload-prompt {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 100%;
+}
+
+.ocr-upload-prompt-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    text-align: center;
+    max-width: 320px;
+    padding: var(--space-8);
+}
+
+.ocr-upload-prompt-inner h3 {
+    color: var(--color-bg-white);
+    font-size: var(--text-md);
+    font-weight: 600;
+    margin: 0;
+}
+
+.ocr-upload-prompt-inner p {
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* PDF Viewer */
+.ocr-pdf-viewer {
+    display: flex;
+    gap: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* Page Thumbnails Sidebar */
+.ocr-page-thumbs {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    background: rgba(0,0,0,0.25);
+    overflow-y: auto;
+    width: 80px;
+    flex-shrink: 0;
+    border-right: 1px solid rgba(255,255,255,0.08);
+}
+
+.ocr-thumb-item {
+    position: relative;
+    cursor: pointer;
+    border: 2px solid transparent;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    transition: all var(--transition-fast);
+    background: rgba(255,255,255,0.05);
+}
+
+.ocr-thumb-item:hover {
+    border-color: rgba(255,255,255,0.3);
+}
+
+.ocr-thumb-item.active {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 2px rgba(4, 83, 205, 0.3);
+}
+
+.ocr-thumb-canvas {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.ocr-thumb-label {
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    background: var(--color-accent);
+    color: white;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-data);
+}
+
+/* Main Canvas Wrapper */
+.ocr-canvas-wrapper {
+    flex: 1;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    overflow: auto;
+    padding: var(--space-4);
+    position: relative;
+}
+
+#ocr-pdf-canvas {
+    max-width: 100%;
+    height: auto;
     border-radius: var(--radius-md);
     box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-    position: relative;
-    padding: 0;
-    overflow: hidden;
 }
 
-.ocr-doc-header-sim {
-    height: 150px;
-    background: linear-gradient(135deg, #F8F9FA 0%, #EDF2F7 100%);
-    position: relative;
-}
-
-.ocr-doc-body-sim {
-    position: relative;
-    min-height: 550px;
-    padding: var(--space-4);
-}
-
-/* Bounding Boxes */
-.ocr-bbox {
+/* Loading Overlay */
+.ocr-loading-overlay {
     position: absolute;
-    border: 2px solid;
-    border-radius: 2px;
-    cursor: pointer;
-    transition: all var(--transition-base);
-    z-index: 10;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    background: rgba(45, 55, 72, 0.85);
+    z-index: 20;
+    backdrop-filter: blur(4px);
 }
 
-.ocr-bbox::after {
-    content: attr(data-field);
-    position: absolute;
-    top: -18px;
-    left: 0;
-    font-size: 9px;
-    font-family: var(--font-data);
-    font-weight: 600;
-    padding: 1px 4px;
-    border-radius: 2px;
-    white-space: nowrap;
-    opacity: 0;
-    transition: opacity var(--transition-fast);
-    pointer-events: none;
+.ocr-loading-overlay span {
+    color: var(--color-bg-white);
+    font-size: var(--text-sm);
+    font-weight: 500;
 }
 
-.ocr-bbox:hover::after { opacity: 1; }
-
-.ocr-bbox--high {
-    border-color: rgba(5, 150, 105, 0.6);
-    background: rgba(5, 150, 105, 0.06);
+/* Page Navigation */
+.ocr-page-nav {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
 }
-.ocr-bbox--high::after { background: var(--color-success); color: #fff; }
-.ocr-bbox--high:hover { background: rgba(5, 150, 105, 0.12); border-color: var(--color-success); }
 
-.ocr-bbox--medium {
-    border-color: rgba(217, 119, 6, 0.6);
-    background: rgba(217, 119, 6, 0.06);
+.btn--xs {
+    padding: 2px 4px;
+    min-width: 24px;
+    min-height: 24px;
 }
-.ocr-bbox--medium::after { background: var(--color-warning); color: #fff; }
-.ocr-bbox--medium:hover { background: rgba(217, 119, 6, 0.12); border-color: var(--color-warning); }
 
-.ocr-bbox--low {
-    border-color: rgba(220, 38, 38, 0.6);
-    background: rgba(220, 38, 38, 0.06);
+/* Empty Entities Placeholder */
+.ocr-empty-entities {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    padding: var(--space-8) var(--space-4);
+    text-align: center;
+    min-height: 200px;
 }
-.ocr-bbox--low::after { background: var(--color-error); color: #fff; }
-.ocr-bbox--low:hover { background: rgba(220, 38, 38, 0.12); border-color: var(--color-error); }
 
-.ocr-bbox.active {
-    border-width: 3px;
-    box-shadow: 0 0 0 3px rgba(4, 83, 205, 0.2);
+.ocr-empty-entities p {
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    margin: 0;
 }
 
 /* ─── Resizer ─── */

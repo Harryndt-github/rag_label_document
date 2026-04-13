@@ -9,6 +9,11 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="index.css">
+    <!-- PDF.js for real PDF rendering & text extraction -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
 </head>
 <body>
     <!-- ═══════════════════════════════════════════ -->
@@ -306,14 +311,33 @@
                     <div class="config-layout">
                         <div class="config-main">
                             <div class="card">
-                                <div class="card-header"><h2 class="card-title">Document Preview</h2></div>
+                                <div class="card-header">
+                                    <h2 class="card-title">Document Preview</h2>
+                                    <select class="config-select config-select--sm" id="wizard-preview-select" aria-label="Select document to preview">
+                                        <!-- JS populated -->
+                                    </select>
+                                </div>
                                 <div class="document-preview" id="document-preview">
-                                    <div class="preview-placeholder">
-                                        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3">
-                                            <rect x="8" y="4" width="48" height="56" rx="4"/>
-                                            <path d="M16 16h32M16 24h24M16 32h28M16 40h20"/>
+                                    <!-- Empty state (shown when no file uploaded) -->
+                                    <div class="preview-empty-state" id="wizard-preview-empty">
+                                        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="var(--color-text-muted)" stroke-width="1.2">
+                                            <rect x="8" y="4" width="32" height="40" rx="4"/>
+                                            <path d="M16 16h16M16 24h12M16 32h8"/>
                                         </svg>
-                                        <p>Document preview will appear here</p>
+                                        <p>Upload documents in Step 1 to preview them here</p>
+                                    </div>
+                                    <!-- PDF Canvas (shown when file loaded) -->
+                                    <div class="preview-canvas-area" id="wizard-preview-canvas-area" style="display:none;">
+                                        <canvas id="wizard-preview-canvas"></canvas>
+                                        <div class="preview-page-nav" id="wizard-preview-nav">
+                                            <button class="btn btn--icon btn--xs" id="wizard-prev-page" aria-label="Previous page">
+                                                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8.5 3L4.5 7l4 4"/></svg>
+                                            </button>
+                                            <span class="preview-page-info" id="wizard-page-info">1 / 1</span>
+                                            <button class="btn btn--icon btn--xs" id="wizard-next-page" aria-label="Next page">
+                                                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5.5 3l4 4-4 4"/></svg>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -459,15 +483,25 @@
                                     <circle cx="60" cy="60" r="52" stroke="#0453CD" stroke-width="8" fill="none" stroke-dasharray="327" stroke-dashoffset="82" stroke-linecap="round" class="estimate-progress"/>
                                 </svg>
                                 <div class="estimate-text">
-                                    <span class="estimate-value">~45s</span>
+                                    <span class="estimate-value" id="review-est-time">~45s</span>
                                     <span class="estimate-label">Est. Time</span>
                                 </div>
                             </div>
                             <div class="estimate-details">
-                                <div class="estimate-row"><span>Pages to process</span><span>12</span></div>
-                                <div class="estimate-row"><span>Expected accuracy</span><span>96.8%</span></div>
-                                <div class="estimate-row"><span>Credits used</span><span>24</span></div>
+                                <div class="estimate-row"><span>Pages to process</span><span id="review-est-pages">0</span></div>
+                                <div class="estimate-row"><span>Expected accuracy</span><span id="review-est-accuracy">96.8%</span></div>
+                                <div class="estimate-row"><span>Credits used</span><span id="review-est-credits">0</span></div>
                             </div>
+                        </div>
+                    </div>
+                    <!-- Document Preview Grid -->
+                    <div class="card review-docs-card">
+                        <div class="card-header">
+                            <h2 class="card-title">Documents to Process</h2>
+                            <span class="badge badge--accent" id="review-doc-count">0 files</span>
+                        </div>
+                        <div class="review-docs-grid" id="review-docs-grid">
+                            <!-- JS populated: document preview cards with thumbnails -->
                         </div>
                     </div>
                 </div>
@@ -611,11 +645,17 @@
             <div class="ocr-toolbar" id="ocr-toolbar">
                 <div class="ocr-toolbar-left">
                     <select class="config-select" id="ocr-document-select" aria-label="Select document">
-                        <option>Invoice_2024_001.pdf</option>
-                        <option>Receipt_ACME_Corp.pdf</option>
-                        <option>Contract_NDA_v2.pdf</option>
+                        <!-- Dynamically populated from DocumentStore -->
                     </select>
-                    <span class="ocr-page-info" id="ocr-page-info">Page 1 of 3</span>
+                    <div class="ocr-page-nav">
+                        <button class="btn btn--icon btn--xs" id="ocr-page-prev" aria-label="Previous page">
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8.5 3L4.5 7l4 4"/></svg>
+                        </button>
+                        <span class="ocr-page-info" id="ocr-page-info">Page 1 of 1</span>
+                        <button class="btn btn--icon btn--xs" id="ocr-page-next" aria-label="Next page">
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5.5 3l4 4-4 4"/></svg>
+                        </button>
+                    </div>
                 </div>
                 <div class="ocr-toolbar-right">
                     <div class="ocr-zoom-controls">
@@ -632,27 +672,40 @@
             </div>
 
             <div class="ocr-split-view" id="ocr-split-view">
-                <!-- LEFT: Document Viewer -->
+                <!-- LEFT: Document Viewer (Real PDF Canvas) -->
                 <div class="ocr-document-panel" id="ocr-document-panel">
                     <div class="ocr-canvas-area" id="ocr-canvas-area">
-                        <!-- Simulated document with bounding boxes -->
-                        <div class="ocr-document-sim" id="ocr-document-sim">
-                            <div class="ocr-doc-header-sim">
-                                <div class="ocr-bbox ocr-bbox--high" data-field="company_name" style="top:28px;left:40px;width:220px;height:28px;" id="bbox-company"></div>
-                                <div class="ocr-bbox ocr-bbox--high" data-field="company_address" style="top:62px;left:40px;width:280px;height:18px;" id="bbox-address"></div>
-                                <div class="ocr-bbox ocr-bbox--high" data-field="invoice_title" style="top:110px;left:280px;width:140px;height:32px;" id="bbox-title"></div>
+                        <!-- Upload prompt (shown when no file loaded) -->
+                        <div class="ocr-upload-prompt" id="ocr-upload-prompt">
+                            <div class="ocr-upload-prompt-inner">
+                                <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="var(--color-text-muted)" stroke-width="1.5">
+                                    <rect x="8" y="6" width="32" height="36" rx="4"/>
+                                    <path d="M16 18h16M16 26h12M16 34h8"/>
+                                    <circle cx="34" cy="36" r="8" fill="var(--color-bg-card)" stroke="var(--color-accent)"/>
+                                    <path d="M34 32v8M30 36h8" stroke="var(--color-accent)" stroke-width="2"/>
+                                </svg>
+                                <h3>No document loaded</h3>
+                                <p>Upload a PDF via <strong>Import & Config</strong> and select it from the dropdown above, or drag a file here.</p>
+                                <label class="btn btn--sm btn--primary" for="ocr-direct-upload" style="cursor:pointer;">
+                                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 10V2M4 5l3-3 3 3"/><path d="M2 9v3a1 1 0 001 1h8a1 1 0 001-1V9"/></svg>
+                                    Upload PDF
+                                </label>
+                                <input type="file" id="ocr-direct-upload" accept=".pdf,.png,.jpg,.jpeg" hidden>
                             </div>
-                            <div class="ocr-doc-body-sim">
-                                <div class="ocr-bbox ocr-bbox--high" data-field="invoice_number" style="top:162px;left:420px;width:160px;height:20px;" id="bbox-inv-num"></div>
-                                <div class="ocr-bbox ocr-bbox--high" data-field="invoice_date" style="top:188px;left:420px;width:140px;height:20px;" id="bbox-date"></div>
-                                <div class="ocr-bbox ocr-bbox--medium" data-field="due_date" style="top:214px;left:420px;width:140px;height:20px;" id="bbox-due-date"></div>
-                                <div class="ocr-bbox ocr-bbox--high" data-field="client_name" style="top:260px;left:40px;width:200px;height:20px;" id="bbox-client"></div>
-                                <div class="ocr-bbox ocr-bbox--low" data-field="po_number" style="top:286px;left:40px;width:180px;height:20px;" id="bbox-po"></div>
-                                <!-- Table area -->
-                                <div class="ocr-bbox ocr-bbox--high" data-field="line_items" style="top:330px;left:40px;width:520px;height:140px;" id="bbox-table"></div>
-                                <div class="ocr-bbox ocr-bbox--high" data-field="subtotal" style="top:490px;left:420px;width:140px;height:20px;" id="bbox-subtotal"></div>
-                                <div class="ocr-bbox ocr-bbox--medium" data-field="tax" style="top:516px;left:420px;width:140px;height:20px;" id="bbox-tax"></div>
-                                <div class="ocr-bbox ocr-bbox--high" data-field="total" style="top:546px;left:420px;width:140px;height:24px;" id="bbox-total"></div>
+                        </div>
+                        <!-- PDF Canvas (shown when file loaded) -->
+                        <div class="ocr-pdf-viewer" id="ocr-pdf-viewer" style="display:none;">
+                            <!-- Page thumbnails sidebar -->
+                            <div class="ocr-page-thumbs" id="ocr-page-thumbs">
+                                <!-- JS populated -->
+                            </div>
+                            <!-- Main canvas -->
+                            <div class="ocr-canvas-wrapper" id="ocr-canvas-wrapper">
+                                <canvas id="ocr-pdf-canvas"></canvas>
+                                <div class="ocr-loading-overlay" id="ocr-loading-overlay" style="display:none;">
+                                    <div class="spinner"></div>
+                                    <span>Processing document...</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -665,13 +718,19 @@
                 <div class="ocr-entities-panel" id="ocr-entities-panel">
                     <div class="entities-header">
                         <h3 class="entities-title">Extracted Entities</h3>
-                        <span class="entities-confidence" id="entities-overall-confidence">Overall: 94.2%</span>
+                        <span class="entities-confidence" id="entities-overall-confidence">Overall: —%</span>
                     </div>
                     <div class="entities-list" id="entities-list">
-                        <!-- JS populated -->
+                        <div class="ocr-empty-entities" id="ocr-empty-entities">
+                            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="var(--color-text-muted)" stroke-width="1.2">
+                                <rect x="6" y="4" width="20" height="24" rx="3"/>
+                                <path d="M11 10h10M11 15h7M11 20h5"/>
+                            </svg>
+                            <p>Load a document to extract entities</p>
+                        </div>
                     </div>
                     <!-- AI Suggestion Banner -->
-                    <div class="ai-suggestion-banner" id="ai-suggestion-banner">
+                    <div class="ai-suggestion-banner" id="ai-suggestion-banner" style="display:none;">
                         <div class="ai-suggestion-icon">
                             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
                                 <path d="M10 2C5.58 2 2 5.58 2 10s3.58 8 8 8 8-3.58 8-8-3.58-8-8-8z"/>
@@ -679,7 +738,7 @@
                             </svg>
                         </div>
                         <div class="ai-suggestion-text">
-                            <strong>AI Suggestion:</strong> Apply "Standard Invoice" template based on document history.
+                            <strong>AI Suggestion:</strong> <span id="ai-suggestion-label">Detected document type</span>
                         </div>
                         <button class="btn btn--sm btn--accent" id="apply-template-btn">Apply</button>
                         <button class="btn btn--sm btn--ghost" id="dismiss-template-btn">Dismiss</button>

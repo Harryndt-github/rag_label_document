@@ -35,18 +35,8 @@ const DocumentStore = {
             { id: 'tpl_002', name: 'Receipt_ACME_Corp.pdf', size: '1.1 MB', ext: 'pdf', pages: 1, uploadedAt: new Date('2026-04-09') },
             { id: 'tpl_003', name: 'Contract_NDA_v2.pdf', size: '4.8 MB', ext: 'pdf', pages: 5, uploadedAt: new Date('2026-04-08') },
         ];
-        // Seed OCR data from preview entities
-        this.ocrData = [
-            { field: 'company_name', label: 'Company Name', value: 'ACME Corporation Ltd.', type: 'Alphanumeric' },
-            { field: 'invoice_number', label: 'Invoice Number', value: 'INV-2026-04-0042', type: 'Alphanumeric' },
-            { field: 'invoice_date', label: 'Invoice Date', value: '2026-04-10', type: 'Date' },
-            { field: 'due_date', label: 'Due Date', value: '2026-05-10', type: 'Date' },
-            { field: 'client_name', label: 'Client Name', value: 'NextGen Digital Solutions', type: 'Alphanumeric' },
-            { field: 'po_number', label: 'PO Number', value: 'PO-78432', type: 'Alphanumeric' },
-            { field: 'subtotal', label: 'Subtotal', value: '$12,450.00', type: 'Currency' },
-            { field: 'tax', label: 'Tax Amount', value: '$1,120.50', type: 'Currency' },
-            { field: 'total', label: 'Total Amount', value: '$13,570.50', type: 'Currency' },
-        ];
+        // OCR data starts empty – populated by OCRPreview on document load
+        this.ocrData = [];
     },
 
     addTemplate(file) {
@@ -498,9 +488,197 @@ const ImportWizard = {
 
         this.currentStep = step;
 
+        // Render document preview on step 2
+        if (step === 2) {
+            this.renderStep2Preview();
+        }
+
         // Update review summary on step 4
         if (step === 4) {
             this.updateReview();
+            this.renderStep4Docs();
+        }
+    },
+
+    /* ─── Step 2: PDF Preview ─── */
+    _wizardPdf: null,
+    _wizardPage: 1,
+    _wizardTotalPages: 1,
+
+    renderStep2Preview() {
+        const templates = DocumentStore.uploadedTemplates.filter(t => t._file);
+        const emptyEl = document.getElementById('wizard-preview-empty');
+        const canvasArea = document.getElementById('wizard-preview-canvas-area');
+        const select = document.getElementById('wizard-preview-select');
+
+        if (templates.length === 0) {
+            emptyEl.style.display = 'flex';
+            canvasArea.style.display = 'none';
+            select.innerHTML = '<option>— No documents uploaded —</option>';
+            return;
+        }
+
+        // Populate dropdown
+        select.innerHTML = templates.map((t, i) =>
+            `<option value="${t.id}" ${i === 0 ? 'selected' : ''}>${t.name}</option>`
+        ).join('');
+
+        // Listen for dropdown change
+        select.onchange = () => {
+            const tpl = DocumentStore.uploadedTemplates.find(t => t.id === select.value);
+            if (tpl && tpl._file) this._loadWizardPdf(tpl._file);
+        };
+
+        // Load first file
+        this._loadWizardPdf(templates[0]._file);
+
+        // Page navigation
+        const prevBtn = document.getElementById('wizard-prev-page');
+        const nextBtn = document.getElementById('wizard-next-page');
+        prevBtn.onclick = () => { if (this._wizardPage > 1) { this._wizardPage--; this._renderWizardPage(); } };
+        nextBtn.onclick = () => { if (this._wizardPage < this._wizardTotalPages) { this._wizardPage++; this._renderWizardPage(); } };
+    },
+
+    async _loadWizardPdf(file) {
+        const emptyEl = document.getElementById('wizard-preview-empty');
+        const canvasArea = document.getElementById('wizard-preview-canvas-area');
+
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            this._wizardPdf = pdf;
+            this._wizardPage = 1;
+            this._wizardTotalPages = pdf.numPages;
+
+            emptyEl.style.display = 'none';
+            canvasArea.style.display = 'flex';
+
+            this._renderWizardPage();
+        } catch (err) {
+            console.error('Wizard PDF load error:', err);
+            emptyEl.querySelector('p').textContent = 'Unable to preview this file format';
+            emptyEl.style.display = 'flex';
+            canvasArea.style.display = 'none';
+        }
+    },
+
+    async _renderWizardPage() {
+        if (!this._wizardPdf) return;
+        const page = await this._wizardPdf.getPage(this._wizardPage);
+        const canvas = document.getElementById('wizard-preview-canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Scale to fit container (max width ~480px)
+        const viewport = page.getViewport({ scale: 1 });
+        const containerWidth = document.getElementById('document-preview').clientWidth - 32;
+        const scale = Math.min(containerWidth / viewport.width, 1.5);
+        const scaledViewport = page.getViewport({ scale });
+
+        canvas.width = scaledViewport.width;
+        canvas.height = scaledViewport.height;
+
+        await page.render({ canvasContext: ctx, viewport: scaledViewport }).promise;
+
+        // Update page info
+        document.getElementById('wizard-page-info').textContent =
+            `${this._wizardPage} / ${this._wizardTotalPages}`;
+    },
+
+    /* ─── Step 4: Review ─── */
+    updateReview() {
+        const realFiles = DocumentStore.uploadedTemplates.filter(t => t._file);
+        const fileCount = realFiles.length || this.files.length;
+        document.getElementById('review-files').textContent = `${fileCount} document${fileCount !== 1 ? 's' : ''}`;
+
+        const precision = document.querySelector('input[name="precision"]:checked');
+        document.getElementById('review-precision').textContent = precision ? precision.value.charAt(0).toUpperCase() + precision.value.slice(1) : 'Balanced';
+        document.getElementById('review-handwriting').textContent = document.getElementById('handwriting-toggle').checked ? 'Enabled' : 'Disabled';
+        document.getElementById('review-autovalidate').textContent = document.getElementById('auto-validate-toggle').checked ? 'Enabled' : 'Disabled';
+        document.getElementById('review-language').textContent = document.getElementById('language-select').value;
+        document.getElementById('review-fields').textContent = `${this.mappingData.length} fields`;
+
+        // Compute real estimates
+        const totalPages = realFiles.reduce((sum, t) => sum + (t.pages || 1), 0) || 1;
+        const precisionVal = precision ? precision.value : 'balanced';
+        const secsPerPage = precisionVal === 'fast' ? 2 : precisionVal === 'ultra' ? 12 : 5;
+        const estTime = totalPages * secsPerPage;
+        const estCredits = totalPages * 2;
+
+        document.getElementById('review-est-pages').textContent = totalPages;
+        document.getElementById('review-est-time').textContent = estTime < 60 ? `~${estTime}s` : `~${Math.ceil(estTime / 60)}m`;
+        document.getElementById('review-est-credits').textContent = estCredits;
+
+        // Update progress ring (proportion of max 5 minutes = 300s)
+        const circumference = 327;
+        const ratio = Math.min(estTime / 300, 1);
+        const offset = circumference * (1 - ratio);
+        const progressCircle = document.querySelector('.estimate-progress');
+        if (progressCircle) progressCircle.style.strokeDashoffset = offset;
+    },
+
+    async renderStep4Docs() {
+        const grid = document.getElementById('review-docs-grid');
+        const countBadge = document.getElementById('review-doc-count');
+        const realFiles = DocumentStore.uploadedTemplates.filter(t => t._file);
+
+        countBadge.textContent = `${realFiles.length} file${realFiles.length !== 1 ? 's' : ''}`;
+
+        if (realFiles.length === 0) {
+            grid.innerHTML = `
+                <div class="review-docs-empty">
+                    <svg width="40" height="40" viewBox="0 0 40 40" fill="none" stroke="var(--color-text-muted)" stroke-width="1.2">
+                        <rect x="6" y="3" width="28" height="34" rx="3"/>
+                        <path d="M12 12h16M12 18h12M12 24h8"/>
+                    </svg>
+                    <p>No documents uploaded yet. Go back to Step 1 to add files.</p>
+                </div>`;
+            return;
+        }
+
+        grid.innerHTML = '';
+
+        for (const tpl of realFiles) {
+            const card = document.createElement('div');
+            card.className = 'review-doc-card';
+
+            // Thumbnail canvas
+            const thumbCanvas = document.createElement('canvas');
+            thumbCanvas.className = 'review-doc-thumb';
+
+            // Try to render PDF first page
+            try {
+                const arrayBuffer = await tpl._file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                const page = await pdf.getPage(1);
+                const vp = page.getViewport({ scale: 0.4 });
+                thumbCanvas.width = vp.width;
+                thumbCanvas.height = vp.height;
+                await page.render({ canvasContext: thumbCanvas.getContext('2d'), viewport: vp }).promise;
+                tpl.pages = pdf.numPages; // update real page count
+            } catch (e) {
+                // Non-PDF fallback: draw a file icon placeholder
+                thumbCanvas.width = 120;
+                thumbCanvas.height = 160;
+                const ctx = thumbCanvas.getContext('2d');
+                ctx.fillStyle = '#F0F2F5';
+                ctx.fillRect(0, 0, 120, 160);
+                ctx.fillStyle = '#A0AEC0';
+                ctx.font = '11px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(tpl.ext?.toUpperCase() || 'FILE', 60, 85);
+            }
+
+            const size = tpl._file.size ? (tpl._file.size / 1024 / 1024).toFixed(2) + ' MB' : tpl.size;
+
+            card.innerHTML = `
+                <div class="review-doc-thumb-wrap"></div>
+                <div class="review-doc-meta">
+                    <span class="review-doc-name" title="${tpl.name}">${tpl.name}</span>
+                    <span class="review-doc-info">${tpl.pages || 1} page${(tpl.pages || 1) > 1 ? 's' : ''} · ${size}</span>
+                </div>
+            `;
+            card.querySelector('.review-doc-thumb-wrap').appendChild(thumbCanvas);
+            grid.appendChild(card);
         }
     },
 
@@ -541,16 +719,6 @@ const ImportWizard = {
                 </tr>
             `;
         }).join('');
-    },
-
-    updateReview() {
-        document.getElementById('review-files').textContent = `${Math.max(this.files.length, 3)} documents`;
-        const precision = document.querySelector('input[name="precision"]:checked');
-        document.getElementById('review-precision').textContent = precision ? precision.value.charAt(0).toUpperCase() + precision.value.slice(1) : 'Balanced';
-        document.getElementById('review-handwriting').textContent = document.getElementById('handwriting-toggle').checked ? 'Enabled' : 'Disabled';
-        document.getElementById('review-autovalidate').textContent = document.getElementById('auto-validate-toggle').checked ? 'Enabled' : 'Disabled';
-        document.getElementById('review-language').textContent = document.getElementById('language-select').value;
-        document.getElementById('review-fields').textContent = `${this.mappingData.length} fields`;
     },
 
     initThresholdSliders() {
@@ -660,105 +828,527 @@ const MasterLabels = {
    OCR PREVIEW
    ═══════════════════════════════════════════════════════════════ */
 const OCRPreview = {
-    entities: [
-        { field: 'company_name', label: 'Company Name', value: 'ACME Corporation Ltd.', confidence: 98.5, level: 'high' },
-        { field: 'company_address', label: 'Company Address', value: '123 Business Ave, Suite 400, San Francisco, CA 94102', confidence: 96.2, level: 'high' },
-        { field: 'invoice_title', label: 'Document Type', value: 'INVOICE', confidence: 99.8, level: 'high' },
-        { field: 'invoice_number', label: 'Invoice Number', value: 'INV-2026-04-0042', confidence: 97.4, level: 'high' },
-        { field: 'invoice_date', label: 'Invoice Date', value: '2026-04-10', confidence: 95.1, level: 'high' },
-        { field: 'due_date', label: 'Due Date', value: '2026-05-10', confidence: 82.3, level: 'medium' },
-        { field: 'client_name', label: 'Client Name', value: 'NextGen Digital Solutions', confidence: 93.7, level: 'high' },
-        { field: 'po_number', label: 'PO Number', value: 'PO-78432', confidence: 65.8, level: 'low' },
-        { field: 'subtotal', label: 'Subtotal', value: '$12,450.00', confidence: 98.1, level: 'high' },
-        { field: 'tax', label: 'Tax Amount', value: '$1,120.50', confidence: 86.4, level: 'medium' },
-        { field: 'total', label: 'Total Amount', value: '$13,570.50', confidence: 99.2, level: 'high' },
-    ],
-
+    // State
+    pdfDoc: null,
+    currentPage: 1,
+    totalPages: 0,
     zoomLevel: 100,
+    entities: [],
+    currentFileId: null,
+    pageTexts: {}, // cache: page number → extracted text
 
     init() {
-        this.renderEntities();
-        this.initBBoxInteraction();
+        this.initDocumentSelector();
+        this.initPageNavigation();
         this.initZoomControls();
         this.initResizer();
         this.initSuggestionBanner();
+        this.initDirectUpload();
+        this.initSaveButton();
+
+        // Listen for new uploads
+        DocumentStore.on('templatesChanged', () => this.refreshDocumentSelector());
     },
 
+    // ─── Document Selector (from DocumentStore) ─────────────────
+    initDocumentSelector() {
+        const select = document.getElementById('ocr-document-select');
+        this.refreshDocumentSelector();
+
+        select.addEventListener('change', () => {
+            const tpl = DocumentStore.uploadedTemplates.find(t => t.id === select.value);
+            if (tpl && tpl._file) {
+                this.loadFile(tpl._file, tpl.id);
+            }
+        });
+    },
+
+    refreshDocumentSelector() {
+        const select = document.getElementById('ocr-document-select');
+        const currentVal = select.value;
+        select.innerHTML = '';
+
+        const templates = DocumentStore.uploadedTemplates;
+        if (templates.length === 0) {
+            select.innerHTML = '<option value="">No documents uploaded</option>';
+            return;
+        }
+
+        // Add placeholder
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = '— Select a document —';
+        select.appendChild(placeholder);
+
+        templates.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.id;
+            opt.textContent = t.name;
+            // Disable non-PDF for now (only PDF.js supported)
+            if (t.ext && t.ext !== 'pdf') {
+                opt.textContent += ' (image)';
+            }
+            select.appendChild(opt);
+        });
+
+        // Try to restore previous selection
+        if (currentVal && Array.from(select.options).some(o => o.value === currentVal)) {
+            select.value = currentVal;
+        }
+    },
+
+    // ─── Direct Upload from OCR page ────────────────────────────
+    initDirectUpload() {
+        const input = document.getElementById('ocr-direct-upload');
+        if (!input) return;
+        input.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // Register in DocumentStore
+            const tpl = DocumentStore.addTemplate(file);
+            // Select it in dropdown and load
+            setTimeout(() => {
+                const select = document.getElementById('ocr-document-select');
+                select.value = tpl.id;
+                this.loadFile(file, tpl.id);
+            }, 100);
+        });
+    },
+
+    // ─── Load & Render PDF ──────────────────────────────────────
+    async loadFile(file, fileId) {
+        this.currentFileId = fileId;
+        this.pageTexts = {};
+        this.entities = [];
+        this.currentPage = 1;
+
+        // Show loading
+        document.getElementById('ocr-upload-prompt').style.display = 'none';
+        document.getElementById('ocr-pdf-viewer').style.display = 'flex';
+        document.getElementById('ocr-loading-overlay').style.display = 'flex';
+
+        // Handle image files (non-PDF)
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (['png', 'jpg', 'jpeg', 'webp'].includes(ext)) {
+            await this.loadImage(file);
+            return;
+        }
+
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            this.pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            this.totalPages = this.pdfDoc.numPages;
+
+            // Update page info in DocumentStore
+            const tpl = DocumentStore.uploadedTemplates.find(t => t.id === fileId);
+            if (tpl) tpl.pages = this.totalPages;
+
+            // Render first page
+            await this.renderPage(1);
+
+            // Generate thumbnails
+            await this.generateThumbnails();
+
+            // Extract text from ALL pages
+            await this.extractAllPageText();
+
+            // Run entity extraction
+            this.detectEntities();
+
+            document.getElementById('ocr-loading-overlay').style.display = 'none';
+        } catch (err) {
+            console.error('PDF load error:', err);
+            document.getElementById('ocr-loading-overlay').style.display = 'none';
+            this.showLoadError(err.message);
+        }
+    },
+
+    async loadImage(file) {
+        const canvas = document.getElementById('ocr-pdf-canvas');
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+
+        img.onload = () => {
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.drawImage(img, 0, 0);
+            URL.revokeObjectURL(url);
+            this.totalPages = 1;
+            this.updatePageInfo();
+            document.getElementById('ocr-loading-overlay').style.display = 'none';
+            document.getElementById('ocr-page-thumbs').innerHTML = '';
+
+            // For images, we can't extract text via PDF.js
+            this.entities = [
+                { field: 'note', label: 'Note', value: 'Image files require OCR service for text extraction', confidence: 0, level: 'low' }
+            ];
+            this.renderEntities();
+        };
+        img.src = url;
+    },
+
+    async renderPage(pageNum) {
+        const page = await this.pdfDoc.getPage(pageNum);
+        const scale = (this.zoomLevel / 100) * 1.5; // Base scale for clarity
+        const viewport = page.getViewport({ scale });
+
+        const canvas = document.getElementById('ocr-pdf-canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+
+        await page.render({ canvasContext: ctx, viewport }).promise;
+
+        this.currentPage = pageNum;
+        this.updatePageInfo();
+        this.highlightThumb(pageNum);
+    },
+
+    async generateThumbnails() {
+        const container = document.getElementById('ocr-page-thumbs');
+        container.innerHTML = '';
+
+        if (this.totalPages <= 1) {
+            container.style.display = 'none';
+            return;
+        }
+        container.style.display = 'flex';
+
+        for (let i = 1; i <= this.totalPages; i++) {
+            const page = await this.pdfDoc.getPage(i);
+            const vp = page.getViewport({ scale: 0.3 });
+            const thumbCanvas = document.createElement('canvas');
+            thumbCanvas.width = vp.width;
+            thumbCanvas.height = vp.height;
+            thumbCanvas.className = 'ocr-thumb-canvas';
+            thumbCanvas.dataset.page = i;
+            thumbCanvas.title = `Page ${i}`;
+
+            const ctx = thumbCanvas.getContext('2d');
+            await page.render({ canvasContext: ctx, viewport: vp }).promise;
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'ocr-thumb-item' + (i === 1 ? ' active' : '');
+            wrapper.dataset.page = i;
+            wrapper.innerHTML = `<span class="ocr-thumb-label">${i}</span>`;
+            wrapper.prepend(thumbCanvas);
+
+            wrapper.addEventListener('click', () => {
+                this.renderPage(i);
+                // Re-extract entities for this page
+                this.detectEntities();
+            });
+
+            container.appendChild(wrapper);
+        }
+    },
+
+    highlightThumb(pageNum) {
+        document.querySelectorAll('.ocr-thumb-item').forEach(t => t.classList.remove('active'));
+        const active = document.querySelector(`.ocr-thumb-item[data-page="${pageNum}"]`);
+        if (active) {
+            active.classList.add('active');
+            active.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    },
+
+    // ─── Text Extraction ────────────────────────────────────────
+    async extractAllPageText() {
+        const allText = [];
+        for (let i = 1; i <= this.totalPages; i++) {
+            const page = await this.pdfDoc.getPage(i);
+            const textContent = await page.getTextContent();
+            const text = textContent.items.map(item => item.str).join(' ');
+            this.pageTexts[i] = text;
+            allText.push(text);
+        }
+        // Store full document text
+        this.fullText = allText.join('\n\n--- PAGE BREAK ---\n\n');
+    },
+
+    // ─── Smart Entity Detection (regex pattern matching) ────────
+    detectEntities() {
+        const text = this.fullText || '';
+        if (!text.trim()) {
+            this.entities = [];
+            this.renderEntities();
+            return;
+        }
+
+        const entities = [];
+        const docType = this.detectDocumentType(text);
+
+        // ── Common patterns (work for all document types) ──
+        // Contract / Document Number
+        const numPatterns = [
+            { regex: /(?:NO|No|Number|NUMBER|#)[.:;\s]*([A-Z0-9][\w\-\/]+)/i, label: 'Document Number' },
+            { regex: /(?:Contract|Invoice|Receipt|PO|SO|Ref)[.\s#:]*([A-Z0-9][\w\-\/]+)/i, label: 'Reference Number' },
+        ];
+        for (const p of numPatterns) {
+            const m = text.match(p.regex);
+            if (m) {
+                entities.push({ field: 'doc_number', label: p.label, value: m[1].trim(), confidence: 95.2, level: 'high' });
+                break;
+            }
+        }
+
+        // Dates
+        const datePatterns = [
+            /(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/g,
+            /(\w+ \d{1,2},?\s*\d{4})/g,
+        ];
+        const foundDates = [];
+        for (const dp of datePatterns) {
+            let dm;
+            while ((dm = dp.exec(text)) !== null) {
+                const val = dm[1].trim();
+                if (!foundDates.includes(val) && foundDates.length < 3) foundDates.push(val);
+            }
+        }
+        if (foundDates.length > 0) {
+            entities.push({ field: 'date_primary', label: 'Date', value: foundDates[0], confidence: 93.8, level: 'high' });
+        }
+        if (foundDates.length > 1) {
+            entities.push({ field: 'date_secondary', label: 'Secondary Date', value: foundDates[1], confidence: 82.1, level: 'medium' });
+        }
+
+        // Money / Amount
+        const moneyPatterns = [
+            /(?:TOTAL|Total|Amount|AMOUNT)[:\s]*\$?([\d,]+\.?\d*)/gi,
+            /([\d,]+\.\d{2})/g,
+        ];
+        const foundAmounts = [];
+        for (const mp of moneyPatterns) {
+            let mm;
+            while ((mm = mp.exec(text)) !== null) {
+                const val = mm[1].replace(/,/g, '');
+                const num = parseFloat(val);
+                if (num > 0 && !foundAmounts.some(a => a.raw === val)) {
+                    foundAmounts.push({ raw: val, num, original: mm[0].trim() });
+                }
+            }
+        }
+        // Sort by value descending, take top amounts
+        foundAmounts.sort((a, b) => b.num - a.num);
+        if (foundAmounts.length > 0) {
+            entities.push({
+                field: 'total_amount', label: 'Total Amount',
+                value: foundAmounts[0].num.toLocaleString('en-US', { minimumFractionDigits: 2 }),
+                confidence: 97.1, level: 'high'
+            });
+        }
+        if (foundAmounts.length > 1) {
+            entities.push({
+                field: 'unit_price', label: 'Unit Price',
+                value: foundAmounts[1].num.toLocaleString('en-US', { minimumFractionDigits: 2 }),
+                confidence: 88.5, level: 'medium'
+            });
+        }
+
+        // ── Document-type specific patterns ──
+        if (docType === 'Sales Contract' || docType === 'Contract') {
+            // BUYER
+            const buyerMatch = text.match(/BUYER[:\s]*(.+?)(?:(?:No|Tel|Address|SELLER)|$)/is);
+            if (buyerMatch) {
+                const buyerLine = buyerMatch[1].split(/\r?\n/)[0].trim().substring(0, 120);
+                entities.push({ field: 'buyer', label: 'Buyer', value: buyerLine, confidence: 91.3, level: 'high' });
+            }
+            // SELLER
+            const sellerMatch = text.match(/SELLER[:\s]*(.+?)(?:(?:Both|1\.|COMMODITY)|$)/is);
+            if (sellerMatch) {
+                const sellerLine = sellerMatch[1].split(/\r?\n/)[0].trim().substring(0, 120);
+                entities.push({ field: 'seller', label: 'Seller', value: sellerLine, confidence: 90.7, level: 'high' });
+            }
+            // Goods
+            const goodsMatch = text.match(/(?:Goods|GOODS|Description|DESCRIPTION)[:\s]*(.+?)(?:Quantity|QUANTITY|$)/is);
+            if (goodsMatch) {
+                entities.push({ field: 'goods', label: 'Goods Description', value: goodsMatch[1].trim().substring(0, 150), confidence: 85.4, level: 'medium' });
+            }
+            // Quantity
+            const qtyMatch = text.match(/(?:Quantity|QTY|Qty)[:\s]*(\d+)/i);
+            if (qtyMatch) {
+                entities.push({ field: 'quantity', label: 'Quantity', value: qtyMatch[1], confidence: 94.2, level: 'high' });
+            }
+            // Shipment terms
+            const shipMatch = text.match(/(?:Shipment|SHIPMENT)[:\s]*(.+?)(?:\d\.|$)/is);
+            if (shipMatch) {
+                entities.push({ field: 'shipment', label: 'Shipment Terms', value: shipMatch[1].trim().substring(0, 100), confidence: 78.6, level: 'medium' });
+            }
+            // Payment terms
+            const payMatch = text.match(/(?:PAYMENT|Payment)\s*(?:TERMS|Terms)[:\s]*(.+?)(?:\d\.|$)/is);
+            if (payMatch) {
+                const payInfo = payMatch[1].trim().substring(0, 120);
+                entities.push({ field: 'payment', label: 'Payment Terms', value: payInfo, confidence: 80.2, level: 'medium' });
+            }
+        }
+
+        if (docType === 'Invoice') {
+            const clientMatch = text.match(/(?:Bill\s*To|Client|Customer)[:\s]*(.+)/i);
+            if (clientMatch) {
+                entities.push({ field: 'client', label: 'Client', value: clientMatch[1].trim().substring(0, 80), confidence: 92.0, level: 'high' });
+            }
+            const poMatch = text.match(/(?:PO|Purchase Order)[:\s#]*([A-Z0-9\-]+)/i);
+            if (poMatch) {
+                entities.push({ field: 'po_number', label: 'PO Number', value: poMatch[1], confidence: 87.5, level: 'medium' });
+            }
+        }
+
+        // ── Fallback: Company names (look for CO., LTD, Corp, Inc) ──
+        const companyPattern = /([A-Z][A-Z\s&.,']+(?:CO\.?,?\s*LTD\.?|CORPORATION|CORP\.?|INC\.?|LLC|COMPANY|TRADING\s*CO))/gi;
+        const companies = [];
+        let cm;
+        while ((cm = companyPattern.exec(text)) !== null) {
+            const name = cm[1].trim();
+            if (name.length > 5 && !companies.includes(name) && companies.length < 4) {
+                companies.push(name);
+            }
+        }
+        companies.forEach((c, i) => {
+            if (!entities.some(e => e.value.includes(c.substring(0, 20)))) {
+                entities.push({
+                    field: `company_${i}`, label: i === 0 ? 'Company (Primary)' : `Company (${i + 1})`,
+                    value: c, confidence: 89.0 - i * 5, level: i === 0 ? 'high' : 'medium'
+                });
+            }
+        });
+
+        // ── Add document type entity ──
+        entities.unshift({
+            field: 'doc_type', label: 'Document Type', value: docType, confidence: 96.5, level: 'high'
+        });
+
+        this.entities = entities;
+        this.renderEntities();
+        this.updateDocumentStoreOCR();
+        this.showAISuggestion(docType);
+    },
+
+    detectDocumentType(text) {
+        const upper = text.toUpperCase();
+        if (upper.includes('SALES CONTRACT') || upper.includes('SALE CONTRACT')) return 'Sales Contract';
+        if (upper.includes('PURCHASE ORDER') || upper.includes('P.O.')) return 'Purchase Order';
+        if (upper.includes('INVOICE') && !upper.includes('COMMERCIAL INVOICE')) return 'Invoice';
+        if (upper.includes('COMMERCIAL INVOICE')) return 'Commercial Invoice';
+        if (upper.includes('PACKING LIST')) return 'Packing List';
+        if (upper.includes('BILL OF LADING') || upper.includes('B/L')) return 'Bill of Lading';
+        if (upper.includes('RECEIPT')) return 'Receipt';
+        if (upper.includes('CONTRACT') || upper.includes('AGREEMENT')) return 'Contract';
+        if (upper.includes('CERTIFICATE')) return 'Certificate';
+        if (upper.includes('QUOTATION') || upper.includes('QUOTE')) return 'Quotation';
+        return 'Document';
+    },
+
+    // ─── Render Entities ────────────────────────────────────────
     renderEntities() {
         const list = document.getElementById('entities-list');
-        list.innerHTML = this.entities.map(e => {
+        const emptyState = document.getElementById('ocr-empty-entities');
+
+        if (this.entities.length === 0) {
+            if (emptyState) emptyState.style.display = 'flex';
+            list.querySelectorAll('.entity-item').forEach(e => e.remove());
+            document.getElementById('entities-overall-confidence').textContent = 'Overall: —%';
+            return;
+        }
+
+        if (emptyState) emptyState.style.display = 'none';
+
+        // Calculate overall confidence
+        const avg = (this.entities.reduce((sum, e) => sum + e.confidence, 0) / this.entities.length).toFixed(1);
+        document.getElementById('entities-overall-confidence').textContent = `Overall: ${avg}%`;
+
+        // Remove old items (keep empty state div)
+        list.querySelectorAll('.entity-item').forEach(e => e.remove());
+
+        this.entities.forEach(e => {
             const inputClass = e.level === 'low' ? 'entity-input entity-input--error' : 'entity-input';
-            return `
-                <div class="entity-item" data-field="${e.field}">
-                    <div class="entity-header">
-                        <span class="entity-label">${e.label}</span>
-                        <span class="entity-confidence entity-confidence--${e.level}">${e.confidence}%</span>
-                    </div>
-                    <input type="text" class="${inputClass}" value="${e.value}" aria-label="${e.label} value">
+            const div = document.createElement('div');
+            div.className = 'entity-item';
+            div.dataset.field = e.field;
+            div.innerHTML = `
+                <div class="entity-header">
+                    <span class="entity-label">${e.label}</span>
+                    <span class="entity-confidence entity-confidence--${e.level}">${e.confidence}%</span>
                 </div>
+                <input type="text" class="${inputClass}" value="${this._escapeHtml(e.value)}" aria-label="${e.label} value">
             `;
-        }).join('');
-
-        // Highlight bbox on entity hover
-        list.querySelectorAll('.entity-item').forEach(item => {
-            item.addEventListener('mouseenter', () => {
-                const field = item.dataset.field;
-                document.querySelectorAll('.ocr-bbox').forEach(b => b.classList.remove('active'));
-                const bbox = document.querySelector(`.ocr-bbox[data-field="${field}"]`);
-                if (bbox) bbox.classList.add('active');
-            });
-            item.addEventListener('mouseleave', () => {
-                document.querySelectorAll('.ocr-bbox').forEach(b => b.classList.remove('active'));
-            });
+            list.appendChild(div);
         });
     },
 
-    initBBoxInteraction() {
-        document.querySelectorAll('.ocr-bbox').forEach(bbox => {
-            bbox.addEventListener('click', () => {
-                const field = bbox.dataset.field;
-                const entityItem = document.querySelector(`.entity-item[data-field="${field}"]`);
-                if (entityItem) {
-                    entityItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    const input = entityItem.querySelector('.entity-input');
-                    if (input) input.focus();
-                }
-            });
+    _escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    },
+
+    // ─── Update DocumentStore with real OCR data ────────────────
+    updateDocumentStoreOCR() {
+        DocumentStore.ocrData = this.entities.map(e => ({
+            field: e.field,
+            label: e.label,
+            value: e.value,
+            type: this._guessFieldType(e),
+        }));
+    },
+
+    _guessFieldType(entity) {
+        if (/date/i.test(entity.label)) return 'Date';
+        if (/amount|price|total|subtotal|tax/i.test(entity.label)) return 'Currency';
+        if (/quantity|qty|count/i.test(entity.label)) return 'Integer';
+        return 'Alphanumeric';
+    },
+
+    // ─── Page Navigation ────────────────────────────────────────
+    initPageNavigation() {
+        document.getElementById('ocr-page-prev').addEventListener('click', () => {
+            if (this.currentPage > 1) {
+                this.renderPage(this.currentPage - 1);
+            }
+        });
+        document.getElementById('ocr-page-next').addEventListener('click', () => {
+            if (this.currentPage < this.totalPages) {
+                this.renderPage(this.currentPage + 1);
+            }
         });
     },
 
+    updatePageInfo() {
+        document.getElementById('ocr-page-info').textContent = `Page ${this.currentPage} of ${this.totalPages}`;
+    },
+
+    // ─── Zoom Controls ──────────────────────────────────────────
     initZoomControls() {
         const zoomIn = document.getElementById('ocr-zoom-in');
         const zoomOut = document.getElementById('ocr-zoom-out');
         const zoomLevel = document.getElementById('ocr-zoom-level');
-        const docSim = document.getElementById('ocr-document-sim');
 
         zoomIn.addEventListener('click', () => {
             if (this.zoomLevel < 200) {
                 this.zoomLevel += 25;
-                docSim.style.transform = `scale(${this.zoomLevel / 100})`;
-                docSim.style.transformOrigin = 'top center';
                 zoomLevel.textContent = this.zoomLevel + '%';
+                if (this.pdfDoc) this.renderPage(this.currentPage);
             }
         });
 
         zoomOut.addEventListener('click', () => {
             if (this.zoomLevel > 50) {
                 this.zoomLevel -= 25;
-                docSim.style.transform = `scale(${this.zoomLevel / 100})`;
-                docSim.style.transformOrigin = 'top center';
                 zoomLevel.textContent = this.zoomLevel + '%';
+                if (this.pdfDoc) this.renderPage(this.currentPage);
             }
         });
     },
 
+    // ─── Resizer ────────────────────────────────────────────────
     initResizer() {
         const resizer = document.getElementById('ocr-resizer');
         const leftPanel = document.getElementById('ocr-document-panel');
         const container = document.getElementById('ocr-split-view');
         let isResizing = false;
 
-        resizer.addEventListener('mousedown', (e) => {
+        resizer.addEventListener('mousedown', () => {
             isResizing = true;
             document.body.style.cursor = 'col-resize';
             document.body.style.userSelect = 'none';
@@ -781,9 +1371,22 @@ const OCRPreview = {
         });
     },
 
+    // ─── AI Suggestion Banner ───────────────────────────────────
+    showAISuggestion(docType) {
+        const banner = document.getElementById('ai-suggestion-banner');
+        const label = document.getElementById('ai-suggestion-label');
+        if (docType && docType !== 'Document') {
+            label.textContent = `Detected "${docType}" — Apply matching template for optimized extraction.`;
+            banner.style.display = '';
+            banner.style.opacity = '1';
+        }
+    },
+
     initSuggestionBanner() {
         const dismissBtn = document.getElementById('dismiss-template-btn');
         const banner = document.getElementById('ai-suggestion-banner');
+        if (!dismissBtn || !banner) return;
+
         dismissBtn.addEventListener('click', () => {
             banner.style.opacity = '0';
             banner.style.transform = 'translateY(10px)';
@@ -800,7 +1403,7 @@ const OCRPreview = {
                     </svg>
                 </div>
                 <div class="ai-suggestion-text">
-                    <strong style="color:var(--color-success)">Template Applied!</strong> "Standard Invoice" template has been applied successfully.
+                    <strong style="color:var(--color-success)">Template Applied!</strong> Document template has been applied successfully.
                 </div>
             `;
             setTimeout(() => {
@@ -808,6 +1411,51 @@ const OCRPreview = {
                 setTimeout(() => banner.style.display = 'none', 300);
             }, 3000);
         });
+    },
+
+    // ─── Save Button ────────────────────────────────────────────
+    initSaveButton() {
+        const btn = document.getElementById('ocr-save-btn');
+        btn.addEventListener('click', () => {
+            // Collect edited values from inputs
+            document.querySelectorAll('.entity-item').forEach(item => {
+                const field = item.dataset.field;
+                const input = item.querySelector('.entity-input');
+                const entity = this.entities.find(e => e.field === field);
+                if (entity && input) {
+                    entity.value = input.value;
+                }
+            });
+            this.updateDocumentStoreOCR();
+
+            // Visual feedback
+            const orig = btn.textContent;
+            btn.textContent = '✓ Saved!';
+            btn.style.background = 'var(--color-success)';
+            btn.style.borderColor = 'var(--color-success)';
+            setTimeout(() => {
+                btn.textContent = orig;
+                btn.style.background = '';
+                btn.style.borderColor = '';
+            }, 2000);
+        });
+    },
+
+    showLoadError(message) {
+        const list = document.getElementById('entities-list');
+        const items = list.querySelectorAll('.entity-item');
+        items.forEach(e => e.remove());
+
+        const emptyState = document.getElementById('ocr-empty-entities');
+        if (emptyState) {
+            emptyState.innerHTML = `
+                <svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="var(--color-error)" stroke-width="1.2">
+                    <circle cx="16" cy="16" r="12"/><path d="M12 12l8 8M20 12l-8 8"/>
+                </svg>
+                <p style="color:var(--color-error)">Error loading document: ${message}</p>
+            `;
+            emptyState.style.display = 'flex';
+        }
     }
 };
 
