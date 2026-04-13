@@ -1539,32 +1539,74 @@ const GeneratePage = {
         const source = document.getElementById('gen-data-source').value;
         const csvArea = document.getElementById('gen-csv-upload-area');
         if (csvArea) {
-            csvArea.style.display = source === 'CSV Upload' ? 'block' : 'none';
+            csvArea.style.display = (source === 'CSV Upload' || source === 'Excel Upload') ? 'block' : 'none';
         }
     },
 
-    csvData: null,
+    importedData: null,
 
     onCsvSelected(e) {
         const file = e.target.files[0];
         if (!file) return;
+        
         const reader = new FileReader();
         reader.onload = (ev) => {
-            const text = ev.target.result;
-            const lines = text.split('\n').filter(l => l.trim());
-            if (lines.length < 2) return;
-            const headers = lines[0].split(',').map(h => h.trim());
-            const rows = lines.slice(1).map(line => {
-                const vals = line.split(',').map(v => v.trim());
-                const row = {};
-                headers.forEach((h, i) => row[h] = vals[i] || '');
-                return row;
-            });
-            this.csvData = { headers, rows };
-            const label = document.getElementById('gen-csv-label');
-            if (label) label.textContent = `✓ ${file.name} — ${rows.length} rows loaded`;
+            try {
+                const data = new Uint8Array(ev.target.result);
+                let records = [];
+                if (typeof XLSX !== 'undefined') {
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheet = workbook.SheetNames[0];
+                    records = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], { defval: '' });
+                } else {
+                    alert("Excel/CSV parsing library not loaded. Please ensure internet connection.");
+                    return;
+                }
+
+                // The Excel file contains multiple rows per document.
+                // Group by case_id or document_instance
+                const documentSets = {};
+                records.forEach(row => {
+                    const docId = row.case_id || row.document_instance || 'Unknown_Doc';
+                    if (!documentSets[docId]) {
+                        documentSets[docId] = {
+                            case_id: row.case_id || docId,
+                            document_instance: row.document_instance || `Doc_${docId}`,
+                            file_name: row.file_name || `${docId}.pdf`,
+                            fields: {}
+                        };
+                    }
+                    
+                    // The schema specifies: field_code, value, page, x, y, width, height
+                    const fieldCode = row.field_code || row.label || row.field || row.key;
+                    if (fieldCode && row.value !== undefined) {
+                        documentSets[docId].fields[fieldCode] = {
+                            value: row.value,
+                            page: row.page,
+                            x: row.x,
+                            y: row.y,
+                            width: row.width,
+                            height: row.height
+                        };
+                    }
+                });
+                
+                this.importedData = Object.values(documentSets);
+                
+                const label = document.getElementById('gen-csv-label');
+                if (label) label.textContent = `✓ ${file.name} — ${this.importedData.length} document configurations loaded`;
+                
+                // Auto-update count to match instances in Excel
+                const countInput = document.getElementById('gen-count-input');
+                if (countInput && this.importedData.length > 0) {
+                    countInput.value = this.importedData.length;
+                }
+            } catch (err) {
+                console.error("Error reading file:", err);
+                alert("Error reading Data Source file. Ensure it is a valid CSV or XLSX format.");
+            }
         };
-        reader.readAsText(file);
+        reader.readAsArrayBuffer(file);
     },
 
     startGeneration() {
@@ -1615,16 +1657,39 @@ const GeneratePage = {
 
             // Generate actual document data
             const docData = {};
-            fields.forEach(f => {
-                if (dataSource === 'CSV Upload' && this.csvData) {
-                    const row = this.csvData.rows[(current - 1) % this.csvData.rows.length];
-                    docData[f.field] = row[f.label] || row[f.field] || DocumentStore.generateRandomValue(f.field);
-                } else {
+            let customDocName = null;
+            let metadata = null;
+            
+            if ((dataSource === 'CSV Upload' || dataSource === 'Excel Upload') && this.importedData && this.importedData.length > 0) {
+                const docSet = this.importedData[(current - 1) % this.importedData.length];
+                
+                // Get the base file name from the Excel data
+                if (docSet.file_name) customDocName = docSet.file_name.replace(/\.[^.]+$/, '');
+                if (docSet.document_instance && !customDocName) customDocName = docSet.document_instance.replace(/\.[^.]+$/, '');
+                if (docSet.case_id && !customDocName) customDocName = docSet.case_id;
+                
+                metadata = { case_id: docSet.case_id, document_instance: docSet.document_instance, fieldsConfig: docSet.fields };
+                
+                // Fill fields using the imported specific mapping
+                Object.keys(docSet.fields).forEach(key => {
+                    docData[key] = docSet.fields[key].value;
+                });
+                
+                // Extra fallback: ensure template requirements are somewhat fulfilled
+                fields.forEach(f => {
+                    if (docData[f.field] === undefined && docData[f.label] === undefined) {
+                        docData[f.field] = DocumentStore.generateRandomValue(f.field);
+                    }
+                });
+            } else {
+                fields.forEach(f => {
                     docData[f.field] = DocumentStore.generateRandomValue(f.field);
-                }
-            });
+                });
+            }
 
-            const docName = `${template.name.replace(/\.[^.]+$/, '')}_gen_${String(current).padStart(3, '0')}.${format === 'PDF' ? 'pdf' : format === 'PNG Image' ? 'png' : 'docx'}`;
+            const baseName = customDocName ? customDocName : `${template.name.replace(/\.[^.]+$/, '')}_gen_${String(current).padStart(3, '0')}`;
+            const finalExtension = format === 'PDF' ? 'pdf' : format === 'PNG Image' ? 'png' : 'docx';
+            const docName = `${baseName}.${finalExtension}`;
 
             const doc = {
                 id: `doc_${Date.now()}_${current}`,
@@ -1636,9 +1701,11 @@ const GeneratePage = {
                 generatedAt: new Date(),
                 preserveFormat: preserveFormat,
             };
+            if (metadata) doc.metadata = metadata;
+            
             generatedDocs.push(doc);
 
-            this._log(log, `Generated ${docName}`, 'success');
+            this._log(log, `Generated ${docName} (Status: Ready)`, 'success');
 
             if (current >= count) {
                 clearInterval(interval);

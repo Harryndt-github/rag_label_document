@@ -770,19 +770,20 @@
                                 <label class="form-label" for="gen-data-source">Data Source</label>
                                 <select class="form-input" id="gen-data-source">
                                     <option>Random Generator</option>
-                                    <option>CSV Upload</option>
+                                    <option value="CSV Upload">CSV Upload</option>
+                                    <option value="Excel Upload">Excel Upload (XLSX)</option>
                                     <option>Database Query</option>
                                 </select>
                                 <p class="config-hint">Choose how field values are populated per document</p>
                             </div>
                         </div>
 
-                        <!-- CSV Upload Area (shown when Data Source = CSV Upload) -->
+                        <!-- CSV/Excel Upload Area (shown when Data Source = CSV Upload or Excel Upload) -->
                         <div class="gen-csv-upload-area" id="gen-csv-upload-area" style="display:none;">
                             <label class="gen-csv-dropzone" for="gen-csv-input">
                                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 14V2M6 6l4-4 4 4"/><path d="M3 13v4a1 1 0 001 1h12a1 1 0 001-1v-4"/></svg>
-                                <span id="gen-csv-label">Click to upload CSV data file</span>
-                                <input type="file" id="gen-csv-input" accept=".csv" hidden>
+                                <span id="gen-csv-label">Click to upload CSV or XLSX data file</span>
+                                <input type="file" id="gen-csv-input" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" hidden>
                             </label>
                         </div>
 
@@ -895,6 +896,7 @@
         </section>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
