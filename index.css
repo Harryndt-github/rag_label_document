@@ -1694,6 +1694,7 @@ body {
 .threshold-slider {
     flex: 1;
     -webkit-appearance: none;
+    appearance: none;
     height: 6px;
     background: var(--color-bg);
     border-radius: var(--radius-full);
@@ -1702,6 +1703,7 @@ body {
 
 .threshold-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
+    appearance: none;
     width: 18px;
     height: 18px;
     background: var(--color-accent);

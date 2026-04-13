@@ -89,12 +89,12 @@ const DocumentStore = {
         const clients = ['Alpha Industries', 'Beta Solutions', 'Gamma Tech', 'Delta Corp', 'Epsilon LLC', 'Zeta Holdings', 'Eta Partners', 'Theta Consulting'];
         const rndInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
         const rndAmount = (min, max) => '$' + (Math.random() * (max - min) + min).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-        const rndDate = () => { const d = new Date(2026, rndInt(0,11), rndInt(1,28)); return d.toISOString().split('T')[0]; };
+        const rndDate = () => { const d = new Date(2026, rndInt(0, 11), rndInt(1, 28)); return d.toISOString().split('T')[0]; };
 
         switch (field) {
             case 'company_name': return companies[rndInt(0, companies.length - 1)];
             case 'client_name': return clients[rndInt(0, clients.length - 1)];
-            case 'invoice_number': return `INV-2026-${String(rndInt(1,12)).padStart(2,'0')}-${String(rndInt(1,9999)).padStart(4,'0')}`;
+            case 'invoice_number': return `INV-2026-${String(rndInt(1, 12)).padStart(2, '0')}-${String(rndInt(1, 9999)).padStart(4, '0')}`;
             case 'po_number': return `PO-${rndInt(10000, 99999)}`;
             case 'invoice_date': case 'due_date': return rndDate();
             case 'subtotal': return rndAmount(1000, 50000);
@@ -188,11 +188,11 @@ const Dashboard = {
         const tbody = document.getElementById('projects-tbody');
         tbody.innerHTML = this.projects.map(p => {
             const statusClass = p.status === 'Completed' ? 'success' :
-                              p.status === 'Processing' ? 'info' : 'warning';
+                p.status === 'Processing' ? 'info' : 'warning';
             const confidenceClass = p.accuracy >= 95 ? 'high' :
-                                  p.accuracy >= 90 ? 'medium' : 'low';
+                p.accuracy >= 90 ? 'medium' : 'low';
             const badgeClass = p.accuracy >= 95 ? 'success' :
-                              p.accuracy >= 90 ? 'warning' : 'error';
+                p.accuracy >= 90 ? 'warning' : 'error';
             return `
                 <tr>
                     <td><strong>${p.name}</strong></td>
@@ -506,7 +506,7 @@ const ImportWizard = {
     _wizardTotalPages: 1,
 
     renderStep2Preview() {
-        const templates = DocumentStore.uploadedTemplates.filter(t => t._file);
+        const templates = DocumentStore.templates.filter(t => t._file);
         const emptyEl = document.getElementById('wizard-preview-empty');
         const canvasArea = document.getElementById('wizard-preview-canvas-area');
         const select = document.getElementById('wizard-preview-select');
@@ -525,7 +525,7 @@ const ImportWizard = {
 
         // Listen for dropdown change
         select.onchange = () => {
-            const tpl = DocumentStore.uploadedTemplates.find(t => t.id === select.value);
+            const tpl = DocumentStore.templates.find(t => t.id === select.value);
             if (tpl && tpl._file) this._loadWizardPdf(tpl._file);
         };
 
@@ -586,7 +586,7 @@ const ImportWizard = {
 
     /* ─── Step 4: Review ─── */
     updateReview() {
-        const realFiles = DocumentStore.uploadedTemplates.filter(t => t._file);
+        const realFiles = DocumentStore.templates.filter(t => t._file);
         const fileCount = realFiles.length || this.files.length;
         document.getElementById('review-files').textContent = `${fileCount} document${fileCount !== 1 ? 's' : ''}`;
 
@@ -619,7 +619,7 @@ const ImportWizard = {
     async renderStep4Docs() {
         const grid = document.getElementById('review-docs-grid');
         const countBadge = document.getElementById('review-doc-count');
-        const realFiles = DocumentStore.uploadedTemplates.filter(t => t._file);
+        const realFiles = DocumentStore.templates.filter(t => t._file);
 
         countBadge.textContent = `${realFiles.length} file${realFiles.length !== 1 ? 's' : ''}`;
 
@@ -761,7 +761,7 @@ const MasterLabels = {
         tbody.innerHTML = this.labels.map((l, i) => {
             const confClass = l.threshold >= 90 ? 'high' : l.threshold >= 80 ? 'medium' : 'low';
             const statusBadge = l.status === 'Active' ? 'success' :
-                               l.status === 'Warning' ? 'warning' : 'error';
+                l.status === 'Warning' ? 'warning' : 'error';
             return `
                 <tr>
                     <td><input type="checkbox" aria-label="Select ${l.name}"></td>
@@ -1543,70 +1543,50 @@ const GeneratePage = {
         }
     },
 
-    importedData: null,
+    csvData: null,
 
     onCsvSelected(e) {
         const file = e.target.files[0];
         if (!file) return;
-        
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            try {
-                const data = new Uint8Array(ev.target.result);
-                let records = [];
-                if (typeof XLSX !== 'undefined') {
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    const firstSheet = workbook.SheetNames[0];
-                    records = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], { defval: '' });
-                } else {
-                    alert("Excel/CSV parsing library not loaded. Please ensure internet connection.");
-                    return;
-                }
 
-                // The Excel file contains multiple rows per document.
-                // Group by case_id or document_instance
-                const documentSets = {};
-                records.forEach(row => {
-                    const docId = row.case_id || row.document_instance || 'Unknown_Doc';
-                    if (!documentSets[docId]) {
-                        documentSets[docId] = {
-                            case_id: row.case_id || docId,
-                            document_instance: row.document_instance || `Doc_${docId}`,
-                            file_name: row.file_name || `${docId}.pdf`,
-                            fields: {}
-                        };
-                    }
-                    
-                    // The schema specifies: field_code, value, page, x, y, width, height
-                    const fieldCode = row.field_code || row.label || row.field || row.key;
-                    if (fieldCode && row.value !== undefined) {
-                        documentSets[docId].fields[fieldCode] = {
-                            value: row.value,
-                            page: row.page,
-                            x: row.x,
-                            y: row.y,
-                            width: row.width,
-                            height: row.height
-                        };
-                    }
-                });
+        const ext = file.name.split('.').pop().toLowerCase();
+        
+        if (ext === 'xlsx' || ext === 'xls') {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const data = new Uint8Array(ev.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                const json = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
                 
-                this.importedData = Object.values(documentSets);
-                
-                const label = document.getElementById('gen-csv-label');
-                if (label) label.textContent = `✓ ${file.name} — ${this.importedData.length} document configurations loaded`;
-                
-                // Auto-update count to match instances in Excel
-                const countInput = document.getElementById('gen-count-input');
-                if (countInput && this.importedData.length > 0) {
-                    countInput.value = this.importedData.length;
+                if (json.length > 0) {
+                    const headers = Object.keys(json[0]);
+                    this.csvData = { headers, rows: json };
+                    const label = document.getElementById('gen-csv-label');
+                    if (label) label.textContent = `✓ ${file.name} — ${json.length} rows loaded`;
                 }
-            } catch (err) {
-                console.error("Error reading file:", err);
-                alert("Error reading Data Source file. Ensure it is a valid CSV or XLSX format.");
-            }
-        };
-        reader.readAsArrayBuffer(file);
+            };
+            reader.readAsArrayBuffer(file);
+        } else {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const text = ev.target.result;
+                const lines = text.split('\n').filter(l => l.trim());
+                if (lines.length < 2) return;
+                const headers = lines[0].split(',').map(h => h.trim());
+                const rows = lines.slice(1).map(line => {
+                    const vals = line.split(',').map(v => v.trim());
+                    const row = {};
+                    headers.forEach((h, i) => row[h] = vals[i] || '');
+                    return row;
+                });
+                this.csvData = { headers, rows };
+                const label = document.getElementById('gen-csv-label');
+                if (label) label.textContent = `✓ ${file.name} — ${rows.length} rows loaded`;
+            };
+            reader.readAsText(file);
+        }
     },
 
     startGeneration() {
@@ -1649,47 +1629,45 @@ const GeneratePage = {
         const generatedDocs = [];
         let current = 0;
 
+        // Normalize CSV/Excel data to a list of row objects for generation
+        let normalizedData = [];
+        if ((dataSource === 'CSV Upload' || dataSource === 'Excel Upload') && this.csvData) {
+            if (this.csvData.headers.includes('field_code') && this.csvData.headers.includes('value')) {
+                // Long format: group by case_id
+                const grouped = {};
+                this.csvData.rows.forEach(r => {
+                    const id = r.case_id || r.file_name || 'doc_1';
+                    if (!grouped[id]) grouped[id] = {};
+                    grouped[id][r.field_code] = r.value;
+                });
+                normalizedData = Object.values(grouped);
+            } else {
+                // Wide format
+                normalizedData = this.csvData.rows;
+            }
+        }
+
+        // Adjust count slightly if we have explicit data
+        const actualCount = Math.min(count, Math.max(normalizedData.length, 1));
+
         const interval = setInterval(() => {
             current++;
-            const pct = (current / count) * 100;
+            const pct = (current / actualCount) * 100;
             fill.style.width = pct + '%';
-            countEl.textContent = `${current} / ${count}`;
+            countEl.textContent = `${current} / ${actualCount}`;
 
             // Generate actual document data
             const docData = {};
-            let customDocName = null;
-            let metadata = null;
-            
-            if ((dataSource === 'CSV Upload' || dataSource === 'Excel Upload') && this.importedData && this.importedData.length > 0) {
-                const docSet = this.importedData[(current - 1) % this.importedData.length];
-                
-                // Get the base file name from the Excel data
-                if (docSet.file_name) customDocName = docSet.file_name.replace(/\.[^.]+$/, '');
-                if (docSet.document_instance && !customDocName) customDocName = docSet.document_instance.replace(/\.[^.]+$/, '');
-                if (docSet.case_id && !customDocName) customDocName = docSet.case_id;
-                
-                metadata = { case_id: docSet.case_id, document_instance: docSet.document_instance, fieldsConfig: docSet.fields };
-                
-                // Fill fields using the imported specific mapping
-                Object.keys(docSet.fields).forEach(key => {
-                    docData[key] = docSet.fields[key].value;
-                });
-                
-                // Extra fallback: ensure template requirements are somewhat fulfilled
-                fields.forEach(f => {
-                    if (docData[f.field] === undefined && docData[f.label] === undefined) {
-                        docData[f.field] = DocumentStore.generateRandomValue(f.field);
-                    }
-                });
-            } else {
-                fields.forEach(f => {
+            fields.forEach(f => {
+                if (normalizedData.length > 0) {
+                    const row = normalizedData[(current - 1) % normalizedData.length];
+                    docData[f.field] = row[f.label] || row[f.field] || DocumentStore.generateRandomValue(f.field);
+                } else {
                     docData[f.field] = DocumentStore.generateRandomValue(f.field);
-                });
-            }
+                }
+            });
 
-            const baseName = customDocName ? customDocName : `${template.name.replace(/\.[^.]+$/, '')}_gen_${String(current).padStart(3, '0')}`;
-            const finalExtension = format === 'PDF' ? 'pdf' : format === 'PNG Image' ? 'png' : 'docx';
-            const docName = `${baseName}.${finalExtension}`;
+            const docName = `${template.name.replace(/\.[^.]+$/, '')}_gen_${String(current).padStart(3, '0')}.${format === 'PDF' ? 'pdf' : format === 'PNG Image' ? 'png' : 'docx'}`;
 
             const doc = {
                 id: `doc_${Date.now()}_${current}`,
@@ -1701,23 +1679,21 @@ const GeneratePage = {
                 generatedAt: new Date(),
                 preserveFormat: preserveFormat,
             };
-            if (metadata) doc.metadata = metadata;
-            
             generatedDocs.push(doc);
 
-            this._log(log, `Generated ${docName} (Status: Ready)`, 'success');
+            this._log(log, `Generated ${docName}`, 'success');
 
-            if (current >= count) {
+            if (current >= actualCount) {
                 clearInterval(interval);
 
                 // Store all generated documents
                 DocumentStore.addGeneratedDocuments(generatedDocs);
 
-                this._log(log, `✓ All ${count} documents generated successfully!`, 'success');
-                this._log(log, `→ ${count} documents ready for export. Go to Export page to download.`, 'info');
+                this._log(log, `✓ All ${actualCount} documents generated successfully!`, 'success');
+                this._log(log, `→ ${actualCount} documents ready for export. Go to Export page to download.`, 'info');
 
                 // Show completion actions
-                this._showCompletionActions(count);
+                this._showCompletionActions(actualCount);
 
                 this.isGenerating = false;
                 generateBtn.disabled = false;
@@ -1957,13 +1933,13 @@ const ExportPage = {
     _buildSummary() {
         const docs = DocumentStore.generatedDocuments;
         let report = '═══════════════════════════════════════════════════════════\n';
-        report +=    '  INSIGHT LEDGER — Document Generation Report\n';
-        report +=    '═══════════════════════════════════════════════════════════\n\n';
-        report +=    `Generated: ${new Date().toLocaleString()}\n`;
-        report +=    `Total Documents: ${docs.length}\n`;
-        report +=    `Template: ${docs[0]?.templateName || 'N/A'}\n`;
-        report +=    `Format: ${docs[0]?.format || 'N/A'}\n\n`;
-        report +=    '───────────────────────────────────────────────────────────\n\n';
+        report += '  INSIGHT LEDGER — Document Generation Report\n';
+        report += '═══════════════════════════════════════════════════════════\n\n';
+        report += `Generated: ${new Date().toLocaleString()}\n`;
+        report += `Total Documents: ${docs.length}\n`;
+        report += `Template: ${docs[0]?.templateName || 'N/A'}\n`;
+        report += `Format: ${docs[0]?.format || 'N/A'}\n\n`;
+        report += '───────────────────────────────────────────────────────────\n\n';
         docs.forEach((doc, i) => {
             report += `Document ${i + 1}: ${doc.name}\n`;
             report += `  Generated: ${doc.generatedAt.toLocaleString()}\n`;
