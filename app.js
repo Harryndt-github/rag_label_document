@@ -90,74 +90,211 @@ const DocumentStore = {
         const rndDate = () => { const d = new Date(2026, rndInt(0, 11), rndInt(1, 28)); return d.toISOString().split('T')[0]; };
         const rndStr = (arr) => arr[rndInt(0, arr.length - 1)];
 
-        const companies = ['ACME Corp', 'NextGen Solutions', 'TechVista Inc', 'Global Dynamics', 'Pinnacle Labs', 'BlueStar Holdings', 'RedPoint Systems', 'OmniTech Group', 'Sunrise Holdings', 'Pacific Trade Co'];
-        const names = ['Nguyen Van A', 'Tran Thi B', 'Le Van C', 'Pham D', 'Hoang E', 'Vo F', 'Bui G', 'Dang H'];
-        const cities = ['Ho Chi Minh City', 'Ha Noi', 'Da Nang', 'Can Tho', 'Hai Phong', 'Nha Trang', 'Hue', 'Vung Tau'];
-        const countries = ['Vietnam', 'Japan', 'USA', 'Korea', 'Singapore', 'Thailand', 'Germany', 'Australia'];
-        const products = ['Electronic Components', 'Textile Materials', 'Agricultural Products', 'Machinery Parts', 'Chemical Reagents', 'Medical Supplies', 'IT Equipment', 'Food & Beverage'];
-        const ports = ['Cat Lai', 'Hai Phong', 'Da Nang', 'Qui Nhon', 'Cai Mep', 'Yokohama', 'Busan', 'Shanghai'];
+        // --- Data pools ---
+        const companyNames = [
+            'NINGBO MING YUE GLOBAL TRADING CO., LTD', 'THIEN LONG GROUP CORPORATION',
+            'SHANGHAI BRIGHT IMPORT EXPORT CO., LTD', 'KOREA TRADING INTERNATIONAL',
+            'SINGAPORE COMMODITIES PTE LTD', 'TOKYO ELECTRONICS JAPAN CO., LTD',
+            'VIETNAM NATIONAL TEXTILE & GARMENT GROUP', 'SAIGON TRADING CORPORATION',
+            'BINH DUONG INDUSTRIAL JOINT STOCK COMPANY', 'DONG NAI PACKAGING CO., LTD',
+            'FORMOSA HA TINH STEEL CORPORATION', 'SAMSUNG ELECTRONICS VIETNAM',
+            'FOXCONN INDUSTRIAL INTERNET CO., LTD', 'MITSUI & CO. VIETNAM LTD'
+        ];
+        const personNames = [
+            'Nguyen Van Minh', 'Tran Thi Lan', 'Le Hoang Nam', 'Pham Quoc Tuan',
+            'Hoang Duc Anh', 'Vo Thi Mai', 'Bui Thanh Long', 'Dang Van Hung',
+            'Do Minh Hieu', 'Ngo Thi Huong', 'Ly Van Phong', 'Truong Quang Hai'
+        ];
+        const addresses = [
+            'No.11-3-3, DongWei Building, No.399, Minghe Road, Ningbo, China',
+            '200 Nguyen Hue, P.Ben Nghe, Q.1, TP.HCM',
+            '45 Le Duan, P.Ben Nghe, Q.1, TP.HCM, Vietnam',
+            'KCN Song Than, Phuong Di An, TP.Di An, Binh Duong',
+            '15 Tran Hung Dao, P.Pham Ngu Lao, Q.1, TP.HCM',
+            '789 Vo Van Kiet, P.1, Q.5, TP.HCM',
+            'Lot A5, KCN Bien Hoa 2, Dong Nai, Vietnam',
+            '26F, Shui On Centre, 6-8 Harbour Road, Wanchai, Hong Kong'
+        ];
+        const docNames = [
+            'Sales Contract', 'Credit Note', 'Debit Note', 'Commercial Invoice',
+            'Proforma Invoice', 'Packing List', 'Bill of Lading', 'Certificate of Origin',
+            'Insurance Certificate', 'Inspection Certificate', 'Customs Declaration'
+        ];
+        const goodsDesc = [
+            'Shoe materials: MSKB9506-L2, Brand: IMS, 100% new, origin from China',
+            'Electronic components: PCB boards, IC chips, capacitors',
+            'Textile fabric: 100% cotton, 60 inch width, white bleached',
+            'Steel coils: HRC SS400, thickness 2.0mm, width 1219mm',
+            'Plastic resin: PP H030SG, pellet form, prime grade',
+            'Chemical: Sodium Hydroxide (NaOH) 99%, industrial grade',
+            'Machinery parts: CNC spindle motor, servo drives, ball screws',
+            'Packaging materials: corrugated carton boxes, kraft paper rolls'
+        ];
+        const banks = [
+            'CHINA MINSHENG BANK, NINGBO BRANCH',
+            'VIETCOMBANK, HO CHI MINH CITY BRANCH',
+            'BIDV, BINH DUONG BRANCH',
+            'HSBC VIETNAM, DISTRICT 1 BRANCH',
+            'STANDARD CHARTERED BANK VIETNAM'
+        ];
+        const cities = ['HCM', 'Ha Noi', 'Da Nang', 'Can Tho', 'Hai Phong', 'Bien Hoa', 'Vung Tau', 'Qui Nhon'];
+        const countries = ['Vietnam', 'China', 'Japan', 'Korea', 'USA', 'Singapore', 'Thailand', 'Germany'];
+        const ports = ['Cat Lai, HCM', 'Hai Phong', 'Da Nang', 'Cai Mep', 'NINGBO, CHINA', 'BUSAN, KOREA', 'YOKOHAMA, JAPAN', 'SHANGHAI, CHINA'];
         const vessels = ['MV OCEAN STAR', 'MV PACIFIC GLORY', 'MV MEKONG TRADER', 'MV SAIGON EXPRESS', 'MV DRAGON PEARL', 'MV BLUE HORIZON'];
+        const currencies = ['USD', 'VND', 'EUR', 'JPY', 'CNY', 'KRW'];
+        const packingTypes = ['SETS', 'CTNS', 'PKGS', 'ROLLS', 'BAGS', 'PALLETS', 'DRUMS'];
+        const paymentTerms = ['T/T IN ADVANCE', 'L/C AT SIGHT', 'D/P 60 DAYS', 'T/T 30 DAYS AFTER B/L DATE', 'CASH AGAINST DOCUMENTS'];
+        const incoterms = ['FOB HO CHI MINH', 'CIF NINGBO', 'CNF BUSAN', 'CFR YOKOHAMA', 'EXW BINH DUONG', 'DDP HO CHI MINH'];
+        const shipmentTerms = ['Not later than December 2025', 'Not later than March 2026', 'Within 30 days after L/C date', 'Prompt shipment', 'As per buyer schedule'];
 
-        const fc = fieldCode.toLowerCase().replace(/[\s\-]/g, '_');
+        // --- Strip common document-type prefixes before matching ---
+        // e.g., CRN_TEN_NGUOI_BAN → TEN_NGUOI_BAN, INV_SO_HOA_DON → SO_HOA_DON
+        let fc = fieldCode.toLowerCase().replace(/[\s\-]/g, '_');
+        fc = fc.replace(/^(crn|inv|bl|ci|pi|co|pl|pk|dn|cn|dc|ins|cert|cust|tkhq|sc|po)_/, '');
 
-        // Company / Organization patterns
-        if (fc.includes('company') || fc.includes('shipper') || fc.includes('consignee') || fc.includes('exporter') || fc.includes('importer') || fc.includes('buyer') || fc.includes('seller'))
-            return rndStr(companies);
-        // Person name patterns
-        if (fc.includes('name') || fc.includes('contact') || fc.includes('person') || fc.includes('representative'))
-            return rndStr(names);
-        // Invoice / Document numbers
-        if (fc.includes('invoice') && (fc.includes('no') || fc.includes('number') || fc.includes('num')))
-            return `INV-${rndInt(2025,2026)}-${String(rndInt(1,12)).padStart(2,'0')}-${String(rndInt(1,9999)).padStart(4,'0')}`;
-        if (fc.includes('bl') || fc.includes('bill_of_lading') || fc.includes('b_l'))
-            return `BL-${rndStr(['HCM','HAN','DNG'])}${rndInt(100000,999999)}`;
-        if (fc.includes('container') && (fc.includes('no') || fc.includes('number')))
-            return `${rndStr(['MSCU','HLXU','CMAU','OOLU'])}${rndInt(1000000,9999999)}`;
-        if (fc.includes('po') || fc.includes('purchase_order'))
-            return `PO-${rndInt(10000, 99999)}`;
-        if (fc.includes('declaration') || fc.includes('customs') || fc.includes('tkhq'))
-            return `${rndInt(100,999)}${String(rndInt(1,50)).padStart(3,'0')}/${rndStr(['HCM','HAN'])}/${rndInt(2025,2026)}`;
-        if (fc.includes('ref') || fc.includes('reference') || fc.includes('number') || fc.includes('no') || fc.includes('code') || fc.includes('id'))
-            return `${fc.substring(0,3).toUpperCase()}-${rndInt(100000,999999)}`;
-        // Date patterns
-        if (fc.includes('date') || fc.includes('ngay') || fc.includes('issued') || fc.includes('created') || fc.includes('etd') || fc.includes('eta'))
+        // ═══════════════════════════════════════════════════
+        //  Vietnamese field_code patterns (priority first)
+        // ═══════════════════════════════════════════════════
+
+        // TEN_CHUNG_TU / TEN_TAI_LIEU = Document name
+        if (fc.includes('ten_chung_tu') || fc.includes('ten_tai_lieu') || fc.includes('loai_chung_tu'))
+            return rndStr(docNames);
+        // TEN_NGUOI_BAN / TEN_NCC / TEN_CONG_TY_BAN = Seller/Supplier name
+        if (fc.includes('ten_nguoi_ban') || fc.includes('ten_ncc') || fc.includes('ten_cong_ty_ban') || fc.includes('nguoi_ban') || fc.includes('ben_ban'))
+            return rndStr(companyNames);
+        // TEN_NGUOI_MUA / TEN_CONG_TY_MUA = Buyer name
+        if (fc.includes('ten_nguoi_mua') || fc.includes('nguoi_mua') || fc.includes('ben_mua') || fc.includes('ten_cong_ty_mua'))
+            return rndStr(companyNames);
+        // TEN = general name (person or company)
+        if (fc.includes('ten_') && (fc.includes('nguoi') || fc.includes('dai_dien')))
+            return rndStr(personNames);
+        if (fc === 'ten' || fc.includes('ten_cong_ty') || fc.includes('ten_don_vi'))
+            return rndStr(companyNames);
+
+        // DIA_CHI = Address
+        if (fc.includes('dia_chi'))
+            return rndStr(addresses);
+        // SO = Number (number-type fields)
+        if (fc.includes('so_credit') || fc.includes('so_cn') || fc.includes('so_dn'))
+            return `CN-${rndStr(['MY','TL','SG','BD'])}${rndInt(100000,999999)}`;
+        if (fc.includes('so_hoa_don') || fc.includes('so_invoice'))
+            return `INV-${rndStr(['MY','TL','SG','BD'])}${rndInt(100000,999999)}`;
+        if (fc.includes('so_hop_dong') || fc.includes('so_contract') || fc.includes('so_sc'))
+            return `SC-${rndStr(['MY','TL','SG','BD'])}${rndInt(100000,999999)}`;
+        if (fc.includes('so_to_khai') || fc.includes('so_tkhq'))
+            return `${rndInt(300,399)}${String(rndInt(1,99)).padStart(3,'0')}/${rndStr(['HCM','HAN','HPH'])}/${rndInt(2025,2026)}`;
+        if (fc.includes('so_van_don') || fc.includes('so_bl') || fc.includes('so_bill'))
+            return `COSU${rndInt(1000000,9999999)}`;
+        if (fc.includes('so_container'))
+            return `${rndStr(['MSCU','HLXU','CMAU','OOLU','TGHU'])}${rndInt(1000000,9999999)}`;
+        if (fc.includes('so_seal') || fc.includes('seal'))
+            return `SL${rndInt(100000,999999)}`;
+        if (fc.includes('so_') || fc.includes('ma_'))
+            return `${fieldCode.replace(/^(CRN|INV|BL|CI)_/i,'').substring(0,4).toUpperCase()}-${rndInt(100000,999999)}`;
+
+        // NGAY = Date
+        if (fc.includes('ngay'))
             return rndDate();
-        // Amount / Price / Weight patterns
+        // LOAI_TIEN / DONG_TIEN = Currency
+        if (fc.includes('loai_tien') || fc.includes('dong_tien') || fc.includes('tien_te'))
+            return rndStr(currencies);
+        // DON_GIA = Unit price
+        if (fc.includes('don_gia'))
+            return rndAmount(10, 100000);
+        // THANH_TIEN / TONG_TIEN / SO_TIEN = Amount
+        if (fc.includes('thanh_tien') || fc.includes('tong_tien') || fc.includes('so_tien') || fc.includes('tong_gia_tri'))
+            return rndAmount(1000, 500000);
+        // SO_LUONG / SL = Quantity
+        if (fc.includes('so_luong') || fc === 'sl')
+            return String(rndInt(1, 10000));
+        // DON_VI_TINH / DVT = Unit
+        if (fc.includes('don_vi') || fc.includes('dvt'))
+            return rndStr(packingTypes);
+        // DIEU_KIEN_GIAO_HANG = Delivery/Incoterm
+        if (fc.includes('dieu_kien') || fc.includes('incoterm'))
+            return rndStr(incoterms);
+        // PHUONG_THUC_THANH_TOAN = Payment terms
+        if (fc.includes('thanh_toan') || fc.includes('phuong_thuc'))
+            return rndStr(paymentTerms);
+        // CANG = Port
+        if (fc.includes('cang_xuat') || fc.includes('cang_di') || fc.includes('loading'))
+            return rndStr(['NINGBO, CHINA', 'SHANGHAI, CHINA', 'BUSAN, KOREA', 'YOKOHAMA, JAPAN']);
+        if (fc.includes('cang_nhap') || fc.includes('cang_den') || fc.includes('discharge'))
+            return rndStr(['CAT LAI, HCM', 'HAI PHONG', 'DA NANG', 'CAI MEP']);
+        if (fc.includes('cang'))
+            return rndStr(ports);
+        // QUOC_GIA / NUOC = Country
+        if (fc.includes('quoc_gia') || fc.includes('nuoc') || fc.includes('xuat_xu'))
+            return rndStr(countries);
+        // MO_TA_HANG / TEN_HANG = Goods description
+        if (fc.includes('mo_ta') || fc.includes('ten_hang') || fc.includes('hang_hoa') || fc.includes('goods'))
+            return rndStr(goodsDesc);
+        // TAU / PHUONG_TIEN = Vessel
+        if (fc.includes('tau') || fc.includes('phuong_tien') || fc.includes('vessel'))
+            return rndStr(vessels);
+        if (fc.includes('chuyen') || fc.includes('voyage'))
+            return `V.${rndInt(100,999)}${rndStr(['E','W','N','S'])}`;
+        // TRONG_LUONG = Weight
+        if (fc.includes('trong_luong') || fc.includes('weight') || fc.includes('gross') || fc.includes('net'))
+            return `${rndAmount(100, 50000)} KG`;
+        // NGAN_HANG / BANK
+        if (fc.includes('ngan_hang') || fc.includes('bank'))
+            return rndStr(banks);
+        // TAI_KHOAN / ACCOUNT
+        if (fc.includes('tai_khoan') || fc.includes('account'))
+            return String(rndInt(100000000, 999999999));
+        // SWIFT
+        if (fc.includes('swift'))
+            return rndStr(['MSBCCNBJ019', 'BFTVVNVX', 'BIDVVNVX', 'HSBCVNVX']);
+        // THOI_HAN_GIAO = Shipment terms
+        if (fc.includes('thoi_han') || fc.includes('giao_hang') || fc.includes('shipment'))
+            return rndStr(shipmentTerms);
+        // DONG_GOI / PACKING
+        if (fc.includes('dong_goi') || fc.includes('packing'))
+            return rndStr(['Export standard packing', 'Carton box on pallet', 'Wooden case', 'Bulk in container']);
+        // GHI_CHU / NOTE
+        if (fc.includes('ghi_chu') || fc.includes('note') || fc.includes('remark'))
+            return rndStr(['As per contract terms', 'Subject to final confirmation', 'Original documents required', 'N/A']);
+        // THUE / TAX / VAT
+        if (fc.includes('thue') || fc.includes('tax') || fc.includes('vat'))
+            return rndAmount(100, 50000);
+
+        // ═══════════════════════════════════════════════════
+        //  English field_code patterns (fallback)
+        // ═══════════════════════════════════════════════════
+        if (fc.includes('company') || fc.includes('shipper') || fc.includes('consignee') || fc.includes('exporter') || fc.includes('importer') || fc.includes('buyer') || fc.includes('seller'))
+            return rndStr(companyNames);
+        if (fc.includes('name') || fc.includes('contact') || fc.includes('person'))
+            return rndStr(personNames);
+        if (fc.includes('address'))
+            return rndStr(addresses);
+        if (fc.includes('invoice') || fc.includes('credit') || fc.includes('debit'))
+            return `${fc.substring(0,3).toUpperCase()}-${rndStr(['MY','TL','SG'])}${rndInt(100000,999999)}`;
+        if (fc.includes('date') || fc.includes('issued') || fc.includes('created') || fc.includes('etd') || fc.includes('eta'))
+            return rndDate();
         if (fc.includes('amount') || fc.includes('total') || fc.includes('subtotal') || fc.includes('price') || fc.includes('value') || fc.includes('cost'))
             return rndAmount(1000, 500000);
-        if (fc.includes('tax') || fc.includes('vat'))
-            return rndAmount(100, 50000);
-        if (fc.includes('weight') || fc.includes('gross') || fc.includes('net'))
-            return `${rndAmount(100, 50000)} KG`;
-        if (fc.includes('quantity') || fc.includes('qty') || fc.includes('pcs'))
+        if (fc.includes('quantity') || fc.includes('qty'))
             return String(rndInt(1, 10000));
-        // Location patterns
-        if (fc.includes('city') || fc.includes('province') || fc.includes('tinh'))
-            return rndStr(cities);
-        if (fc.includes('country') || fc.includes('origin') || fc.includes('destination') || fc.includes('quoc_gia'))
+        if (fc.includes('currency'))
+            return rndStr(currencies);
+        if (fc.includes('country') || fc.includes('origin') || fc.includes('destination'))
             return rndStr(countries);
-        if (fc.includes('port') || fc.includes('cang'))
+        if (fc.includes('port'))
             return rndStr(ports);
-        if (fc.includes('address') || fc.includes('dia_chi'))
-            return `${rndInt(1,999)} ${rndStr(['Nguyen Hue','Le Loi','Tran Hung Dao','Vo Van Kiet','Hai Ba Trung'])}, ${rndStr(cities)}`;
-        // Vessel / Transport
-        if (fc.includes('vessel') || fc.includes('tau') || fc.includes('ship'))
-            return rndStr(vessels);
-        if (fc.includes('voyage'))
-            return `V.${rndInt(100,999)}${rndStr(['E','W','N','S'])}`;
-        // Product / Description
-        if (fc.includes('product') || fc.includes('description') || fc.includes('goods') || fc.includes('commodity') || fc.includes('hang_hoa'))
-            return rndStr(products);
-        if (fc.includes('currency') || fc.includes('tien'))
-            return rndStr(['USD', 'VND', 'EUR', 'JPY', 'KRW']);
-        if (fc.includes('unit') || fc.includes('don_vi'))
-            return rndStr(['KG', 'PCS', 'SET', 'CTN', 'PKG', 'M3']);
-        if (fc.includes('term') || fc.includes('incoterm'))
-            return rndStr(['FOB', 'CIF', 'CNF', 'CFR', 'EXW', 'DDP']);
-        if (fc.includes('payment') || fc.includes('thanh_toan'))
-            return rndStr(['T/T', 'L/C', 'D/P', 'D/A', 'Cash']);
-        // Fallback: generate a plausible alphanumeric value
-        return `${fieldCode.substring(0, Math.min(fieldCode.length, 4)).toUpperCase()}_${rndInt(1000, 9999)}`;
+        if (fc.includes('product') || fc.includes('description') || fc.includes('commodity'))
+            return rndStr(goodsDesc);
+        if (fc.includes('payment'))
+            return rndStr(paymentTerms);
+        if (fc.includes('term'))
+            return rndStr(incoterms);
+        if (fc.includes('unit'))
+            return rndStr(packingTypes);
+
+        // ═══════════════════════════════════════════════════
+        //  Absolute fallback — use cleaned field name
+        // ═══════════════════════════════════════════════════
+        return `${fieldCode.replace(/^(CRN|INV|BL|CI|PI|CO|PL)_/i,'').substring(0,6).toUpperCase()}-${rndInt(1000, 9999)}`;
     }
 };
 
