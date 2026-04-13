@@ -1994,12 +1994,19 @@ const ExportPage = {
         if (!docs || docs.length === 0) return null;
         
         if (!window.PDFLib) {
-            alert('PDF-lib is not currently loaded. Make sure the CDN script is present in index.html.');
+            console.error('PDF-lib is not currently loaded.');
             return null;
         }
 
         const { PDFDocument, rgb, StandardFonts } = window.PDFLib;
         const outPdf = await PDFDocument.create();
+        
+        let font;
+        try {
+            font = await outPdf.embedFont(StandardFonts?.Helvetica || 'Helvetica');
+        } catch(e) {
+            console.warn('Fallback font embed failed:', e);
+        }
 
         for (let i = 0; i < docs.length; i++) {
             const doc = docs[i];
@@ -2007,25 +2014,37 @@ const ExportPage = {
             
             let templatePdfDoc;
             if (template && template._file) {
-                 const arrayBuffer = await template._file.arrayBuffer();
+                 const arrayBuffer = await new Promise((resolve, reject) => {
+                     const r = new FileReader();
+                     r.onload = e => resolve(e.target.result);
+                     r.onerror = reject;
+                     r.readAsArrayBuffer(template._file);
+                 });
                  templatePdfDoc = await PDFDocument.load(arrayBuffer);
             } else {
                  templatePdfDoc = await PDFDocument.create();
                  templatePdfDoc.addPage([595.28, 841.89]); // A4 fallback
             }
             
-            const font = await templatePdfDoc.embedFont(StandardFonts.Helvetica);
-            const pages = templatePdfDoc.getPages();
+            const copiedPages = await outPdf.copyPages(templatePdfDoc, templatePdfDoc.getPageIndices());
+            const startIdx = outPdf.getPageCount();
+            copiedPages.forEach(p => outPdf.addPage(p));
+            
+            const allPages = outPdf.getPages();
             
             Object.keys(doc.data).forEach(field => {
                  const meta = doc.meta && doc.meta[field];
                  const text = String(doc.data[field] || '');
                  
                  if (meta && typeof meta.x === 'number' && !isNaN(meta.x) && typeof meta.y === 'number' && !isNaN(meta.y)) {
-                      const pageIdx = Math.max(0, (meta.page || 1) - 1);
-                      if (pageIdx < pages.length) {
-                           const page = pages[pageIdx];
+                      const pageOffset = Math.max(0, (parseInt(meta.page) || 1) - 1);
+                      const targetIdx = startIdx + pageOffset;
+                      
+                      if (targetIdx < allPages.length && font) {
+                           const page = allPages[targetIdx];
                            const { height } = page.getSize();
+                           
+                           // Draw using pdf-lib bottom-up coordinates
                            page.drawText(text, {
                                x: meta.x,
                                y: height - meta.y, 
@@ -2036,9 +2055,6 @@ const ExportPage = {
                       }
                  }
             });
-            
-            const copiedPages = await outPdf.copyPages(templatePdfDoc, templatePdfDoc.getPageIndices());
-            copiedPages.forEach(p => outPdf.addPage(p));
         }
 
         const pdfBytes = await outPdf.save();
