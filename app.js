@@ -2497,57 +2497,63 @@ const GeneratePage = {
     // Auto-detect label:value pairs from template text positions (smart fallback)
     // This is the critical fallback when AI is offline
     _autoDetectFieldsFromTemplate(structure) {
+        const docType = (structure.documentType || '').toUpperCase();
+        let pfx = 'CRN_';
+        if (docType.includes('INVOICE')) pfx = 'INV_';
+        else if (docType.includes('CONTRACT') || docType.includes('AGREEMENT') || docType.includes('ORDER')) pfx = 'CON_';
+        else if (docType.includes('PACKING') || docType.includes('LIST')) pfx = 'PKL_';
+        else if (docType.includes('BILL') || docType.includes('LADING')) pfx = 'OBL_';
+        else if (docType.includes('CREDIT') || docType.includes('L/C')) pfx = 'LOC_';
+
         const labelPatterns = [
-            // English patterns
-            { pattern: /^NO[.:\s#]*$/i, code: 'SO_CHUNG_TU', label: 'Document Number' },
-            { pattern: /\bNO[:.\s]/i, code: 'SO_CHUNG_TU', label: 'Document Number' },
-            { pattern: /\bDATE[:\s]/i, code: 'NGAY', label: 'Date' },
-            { pattern: /\bDATED[:\s]/i, code: 'NGAY', label: 'Date' },
-            { pattern: /\bBUYER[:\s]/i, code: 'TEN_NGUOI_MUA', label: 'Buyer Name' },
-            { pattern: /\bSELLER[:\s]/i, code: 'TEN_NGUOI_BAN', label: 'Seller Name' },
-            { pattern: /\bCOMMODITY/i, code: 'MO_TA_HANG', label: 'Goods Description' },
-            { pattern: /\bGOODS\s*DESCRIPTION/i, code: 'MO_TA_HANG', label: 'Goods Description' },
-            { pattern: /\bQUANTITY[:\s]/i, code: 'SO_LUONG', label: 'Quantity' },
-            { pattern: /\bQTY[:\s]/i, code: 'SO_LUONG', label: 'Quantity' },
-            { pattern: /\bUNIT\s*PRICE[:\s]/i, code: 'DON_GIA', label: 'Unit Price' },
-            { pattern: /\bPRICE[:\s]/i, code: 'DON_GIA', label: 'Unit Price' },
-            { pattern: /\bTOTAL[:\s]/i, code: 'TONG_TIEN', label: 'Total Amount' },
-            { pattern: /\bAMOUNT[:\s]/i, code: 'TONG_TIEN', label: 'Total Amount' },
-            { pattern: /\bPAYMENT\s*TERMS/i, code: 'PHUONG_THUC_THANH_TOAN', label: 'Payment Terms' },
-            { pattern: /\bSHIPMENT/i, code: 'THOI_HAN_GIAO', label: 'Shipment Terms' },
-            { pattern: /\bDELIVERY/i, code: 'THOI_HAN_GIAO', label: 'Delivery Terms' },
-            { pattern: /\bPORT\s*OF\s*LOADING/i, code: 'CANG_XUAT', label: 'Port of Loading' },
-            { pattern: /\bLOADING\s*PORT/i, code: 'CANG_XUAT', label: 'Loading Port' },
-            { pattern: /\bPORT\s*OF\s*(DISCHARGE|DESTINATION)/i, code: 'CANG_NHAP', label: 'Port of Discharge' },
-            { pattern: /\bDESTINATION\s*PORT/i, code: 'CANG_NHAP', label: 'Destination Port' },
-            { pattern: /\bADDRESS[:\s]/i, code: 'DIA_CHI', label: 'Address' },
-            { pattern: /\bTEL[:\s]/i, code: 'DIEN_THOAI', label: 'Telephone' },
-            { pattern: /\bPHONE[:\s]/i, code: 'DIEN_THOAI', label: 'Phone' },
-            { pattern: /\bFAX[:\s]/i, code: 'FAX', label: 'Fax' },
-            { pattern: /\bSWIFT\s*(?:CODE)?[:\s]/i, code: 'SWIFT_CODE', label: 'SWIFT Code' },
-            { pattern: /\bACCOUNT\s*(?:NUMBER|NO)?[:\s]/i, code: 'SO_TAI_KHOAN', label: 'Account Number' },
-            { pattern: /\bBANK\s*(?:NAME)?[:\s]/i, code: 'NGAN_HANG', label: 'Bank' },
-            { pattern: /\bBENEFICIARY[:\s]/i, code: 'NGUOI_THU_HUONG', label: 'Beneficiary' },
-            { pattern: /\bPARTIAL\s*SHIPMENT/i, code: 'GIAO_HANG_TUNG_PHAN', label: 'Partial Shipment' },
-            { pattern: /\bTRANSHIPMENT/i, code: 'CHUYEN_TAI', label: 'Transshipment' },
-            { pattern: /\bPACKING/i, code: 'DONG_GOI', label: 'Packing' },
-            { pattern: /\bMARKING/i, code: 'KY_MA_HIEU', label: 'Marking' },
-            { pattern: /\bINSURANCE/i, code: 'BAO_HIEM', label: 'Insurance' },
-            { pattern: /\bMODEL/i, code: 'MA_HANG', label: 'Model' },
-            { pattern: /\bBRAND/i, code: 'THUONG_HIEU', label: 'Brand' },
-            { pattern: /\bORIGIN/i, code: 'XUAT_XU', label: 'Origin' },
+            // Standard/Fallback English patterns
+            { pattern: /^NO[.:\s#]*$/i, code: pfx === 'INV_' ? `${pfx}SO_HOA_DON` : `${pfx}SO_CHUNG_TU`, label: pfx === 'INV_' ? 'Số Document/ Invoice No' : pfx === 'PKL_' ? 'Số chứng từ/ PACKING LIST' : pfx === 'LOC_' ? 'Số LC/ Documentary Credit Number' : 'Số chứng từ' },
+            { pattern: /\bNO[:.\s]/i, code: pfx === 'INV_' ? `${pfx}SO_HOA_DON` : `${pfx}SO_CHUNG_TU`, label: pfx === 'INV_' ? 'Số Document/ Invoice No' : 'Số chứng từ' },
+            { pattern: /\bDATE[:\s]/i, code: pfx === 'CON_' ? `${pfx}NGAY_HOP_DONG` : pfx === 'LOC_' ? `${pfx}NGAY_PHAT_HANH` : `${pfx}NGAY_LAP`, label: pfx === 'LOC_' ? 'Ngày phát hành/ Date of Issue' : 'Ngày chứng từ/ Date' },
+            { pattern: /\bDATED[:\s]/i, code: pfx === 'CON_' ? `${pfx}NGAY_HOP_DONG` : pfx === 'LOC_' ? `${pfx}NGAY_PHAT_HANH` : `${pfx}NGAY_LAP`, label: pfx === 'LOC_' ? 'Ngày phát hành/ Date of Issue' : 'Ngày chứng từ/ Date' },
+            { pattern: /\bBUYER[:\s]/i, code: `${pfx}B_NGUOI_MUA_TEN`, label: pfx === 'INV_' ? 'Tên người mua/ For account & risk of messrs' : 'Người mua/ For account & risk of messrs' },
+            { pattern: /\bSELLER[:\s]/i, code: `${pfx}B_NGUOI_BAN_TEN`, label: 'Tên người bán' },
+            { pattern: /\bCOMMODITY/i, code: `${pfx}C_TEN_HANG`, label: 'Tên hàng hóa' },
+            { pattern: /\bGOODS\s*DESCRIPTION/i, code: `${pfx}C_TEN_HANG`, label: 'Tên hàng hóa' },
+            { pattern: /\bQUANTITY[:\s]/i, code: `${pfx}C_SO_LUONG`, label: 'Số lượng/ Quantity' },
+            { pattern: /\bQTY[:\s]/i, code: `${pfx}C_SO_LUONG`, label: 'Số lượng/ Quantity' },
+            { pattern: /\bUNIT\s*PRICE[:\s]/i, code: `${pfx}C_DON_GIA`, label: 'Đơn giá' },
+            { pattern: /\bPRICE[:\s]/i, code: `${pfx}C_DON_GIA`, label: 'Đơn giá' },
+            { pattern: /\bTOTAL[:\s]/i, code: `${pfx}C_THANH_TIEN`, label: 'Thành tiền/ Amount' },
+            { pattern: /\bAMOUNT[:\s]/i, code: `${pfx}C_THANH_TIEN`, label: 'Thành tiền/ Amount' },
             
+            // Transport / Notification
+            { pattern: /\bPORT\s*OF\s*LOADING/i, code: `${pfx}CANG_XUAT`, label: 'Loading Port' },
+            { pattern: /\bPORT\s*OF\s*(DISCHARGE|DESTINATION)/i, code: `${pfx}CANG_NHAP`, label: 'Port of Discharge' },
+            { pattern: /\bNOTIFY\s*PARTY/i, code: pfx === 'OBL_' ? `${pfx}B_BEN_DUOC_THONG_BAO_TEN` : `${pfx}B_CONG_TY_NHAP_KHAU`, label: pfx === 'OBL_' ? 'Bên được thông báo/ Notify party' : 'Công ty nhập khẩu/ Notify party' },
+            
+            // Banking / LC
+            { pattern: /\bAPPLICANT[:\s]/i, code: `${pfx}B_NGUOI_YEU_CAU_TEN`, label: 'Người yêu cầu/ Applicant' },
+            { pattern: /\bBENEFICIARY[:\s]/i, code: `${pfx}B_NGUOI_THU_HUONG_TEN`, label: 'Người thụ hưởng/ Beneficiary' },
+            { pattern: /\bISSUING\s*BANK/i, code: `${pfx}A_NGAN_HANG_PHAT_HANH_TEN`, label: 'Ngân hàng phát hành/ Issuing Bank' },
+            { pattern: /\bADVISING\s*BANK/i, code: `${pfx}B_NGAN_HANG_THONG_BAO_TEN`, label: 'Ngân hàng thông báo/ Advising Bank' },
+            
+            // General Company
+            { pattern: /\bADDRESS[:\s]/i, code: `${pfx}DIA_CHI`, label: 'Địa Chỉ' },
+            { pattern: /\bTEL[:\s]/i, code: `${pfx}DIEN_THOAI`, label: 'Telephone' },
+            { pattern: /\bPHONE[:\s]/i, code: `${pfx}DIEN_THOAI`, label: 'Phone' },
+            { pattern: /\bFAX[:\s]/i, code: `${pfx}FAX`, label: 'Fax' },
+            { pattern: /\bSWIFT\s*(?:CODE)?[:\s]/i, code: `${pfx}SWIFT_CODE`, label: 'SWIFT Code' },
+            { pattern: /\bACCOUNT\s*(?:NUMBER|NO)?[:\s]/i, code: `${pfx}SO_TAI_KHOAN`, label: 'Account Number' },
+            { pattern: /\bBANK\s*(?:NAME)?[:\s]/i, code: `${pfx}NGAN_HANG`, label: 'Bank' },
+
             // Vietnamese patterns
-            { pattern: /S[ỐO]\s*(?:HÓA\s*ĐƠN|HOA\s*DON|CHỨNG\s*TỪ|CHUNG\s*TU)[:\s]/i, code: 'SO_CHUNG_TU', label: 'Số Chứng Từ' },
-            { pattern: /S[ỐO][:.\s]/i, code: 'SO_CHUNG_TU', label: 'Số Chứng Từ' },
-            { pattern: /NGÀY|NGAY[:\s]/i, code: 'NGAY', label: 'Ngày' },
-            { pattern: /NG[ƯƯỜ]*I\s*MUA[:\s]/i, code: 'TEN_NGUOI_MUA', label: 'Người Mua' },
-            { pattern: /NG[ƯƯỜ]*I\s*BÁN|NGUOI\s*BAN[:\s]/i, code: 'TEN_NGUOI_BAN', label: 'Người Bán' },
-            { pattern: /Đ[ỊI]A\s*CH[ỈI][:\s]/i, code: 'DIA_CHI', label: 'Địa Chỉ' },
-            { pattern: /S[ỐO]\s*L[ƯƯỢ]*NG[:\s]/i, code: 'SO_LUONG', label: 'Số Lượng' },
-            { pattern: /Đ[ƠO]N\s*GIÁ|DON\s*GIA[:\s]/i, code: 'DON_GIA', label: 'Đơn Giá' },
-            { pattern: /TỔNG\s*(?:TIỀN|CONG)|TONG\s*(?:TIEN|CONG)[:\s]/i, code: 'TONG_TIEN', label: 'Tổng Tiền' },
-            { pattern: /HÀNG\s*HÓA|HANG\s*HOA|MÔ\s*TẢ|MO\s*TA[:\s]/i, code: 'MO_TA_HANG', label: 'Mô Tả Hàng Hóa' }
+            { pattern: /S[ỐO]\s*(?:HÓA\s*ĐƠN|HOA\s*DON)[:\s]/i, code: pfx === 'INV_' ? `${pfx}SO_HOA_DON` : `${pfx}SO_CHUNG_TU`, label: pfx === 'INV_' ? 'Số Document/ Invoice No' : 'Số chứng từ' },
+            { pattern: /S[ỐO]\s*(?:CHỨNG\s*TỪ|CHUNG\s*TU)[:\s]/i, code: pfx === 'PKL_' ? `${pfx}SO_CHUNG_TU` : `${pfx}SO_HOA_DON`, label: pfx === 'PKL_' ? 'Số chứng từ/ PACKING LIST' : 'Số Document/ Invoice No' },
+            { pattern: /S[ỐO][:.\s]/i, code: pfx === 'INV_' ? `${pfx}SO_HOA_DON` : `${pfx}SO_CHUNG_TU`, label: pfx === 'INV_' ? 'Số Document/ Invoice No' : 'Số chứng từ' },
+            { pattern: /NGÀY|NGAY[:\s]/i, code: pfx === 'CON_' ? `${pfx}NGAY_HOP_DONG` : `${pfx}NGAY_LAP`, label: 'Ngày chứng từ/ Date' },
+            { pattern: /NG[ƯƯỜ]*I\s*MUA[:\s]/i, code: `${pfx}B_NGUOI_MUA_TEN`, label: pfx === 'INV_' ? 'Tên người mua/ For account & risk of messrs' : 'Người mua/ For account & risk of messrs' },
+            { pattern: /NG[ƯƯỜ]*I\s*BÁN|NGUOI\s*BAN[:\s]/i, code: `${pfx}B_NGUOI_BAN_TEN`, label: 'Tên người bán' },
+            { pattern: /Đ[ỊI]A\s*CH[ỈI][:\s]/i, code: `${pfx}DIA_CHI`, label: 'Địa Chỉ' },
+            { pattern: /S[ỐO]\s*L[ƯƯỢ]*NG[:\s]/i, code: `${pfx}C_SO_LUONG`, label: 'Số lượng/ Quantity' },
+            { pattern: /Đ[ƠO]N\s*GIÁ|DON\s*GIA[:\s]/i, code: `${pfx}C_DON_GIA`, label: 'Đơn giá' },
+            { pattern: /TỔNG\s*(?:TIỀN|CONG)|TONG\s*(?:TIEN|CONG)[:\s]/i, code: `${pfx}C_THANH_TIEN`, label: 'Thành tiền/ Amount' },
+            { pattern: /HÀNG\s*HÓA|HANG\s*HOA|MÔ\s*TẢ|MO\s*TA[:\s]/i, code: `${pfx}C_TEN_HANG`, label: 'Tên hàng hóa' }
         ];
 
         for (const page of structure.pages) {
@@ -2657,14 +2663,14 @@ const GeneratePage = {
                 const lineText = line.text.trim();
                 // "NO: xxxx" or "NO.: xxxx"
                 const inlinePatterns = [
-                    { rx: /\bNO[.:]?\s*[:]\s*(.+)/i, code: 'SO_CHUNG_TU', label: 'Document Number' },
-                    { rx: /\bDATE[.:]?\s*[:]\s*(.+)/i, code: 'NGAY', label: 'Date' },
-                    { rx: /\bBUYER[.:]?\s*[:]\s*(.+)/i, code: 'TEN_NGUOI_MUA', label: 'Buyer' },
-                    { rx: /\bSELLER[.:]?\s*[:]\s*(.+)/i, code: 'TEN_NGUOI_BAN', label: 'Seller' },
-                    { rx: /\bTOTAL[.:]?\s*[:]\s*(.+)/i, code: 'TONG_TIEN', label: 'Total Amount' },
-                    { rx: /S[ỐO][.:]?\s*[:]\s*(.+)/i, code: 'SO_CHUNG_TU', label: 'Số Chứng Từ' },
-                    { rx: /NGÀY|NGAY[.:]?\s*[:]\s*(.+)/i, code: 'NGAY', label: 'Ngày' },
-                    { rx: /Đ[ƠO]N\s*GIÁ|DON\s*GIA[.:]?\s*[:]\s*(.+)/i, code: 'DON_GIA', label: 'Đơn Giá' }
+                    { rx: /\bNO[.:]?\s*[:]\s*(.+)/i, code: pfx === 'INV_' ? `${pfx}SO_HOA_DON` : `${pfx}SO_CHUNG_TU`, label: pfx === 'INV_' ? 'Số Document/ Invoice No' : pfx === 'PKL_' ? 'Số chứng từ/ PACKING LIST' : pfx === 'LOC_' ? 'Số LC/ Documentary Credit Number' : 'Số chứng từ' },
+                    { rx: /\bDATE[.:]?\s*[:]\s*(.+)/i, code: pfx === 'CON_' ? `${pfx}NGAY_HOP_DONG` : pfx === 'LOC_' ? `${pfx}NGAY_PHAT_HANH` : `${pfx}NGAY_LAP`, label: pfx === 'LOC_' ? 'Ngày phát hành/ Date of Issue' : 'Ngày chứng từ/ Date' },
+                    { rx: /\bBUYER[.:]?\s*[:]\s*(.+)/i, code: `${pfx}B_NGUOI_MUA_TEN`, label: pfx === 'INV_' ? 'Tên người mua/ For account & risk of messrs' : 'Người mua/ For account & risk of messrs' },
+                    { rx: /\bSELLER[.:]?\s*[:]\s*(.+)/i, code: `${pfx}B_NGUOI_BAN_TEN`, label: 'Tên người bán' },
+                    { rx: /\bTOTAL[.:]?\s*[:]\s*(.+)/i, code: `${pfx}C_THANH_TIEN`, label: 'Thành tiền/ Amount' },
+                    { rx: /S[ỐO][.:]?\s*[:]\s*(.+)/i, code: pfx === 'INV_' ? `${pfx}SO_HOA_DON` : `${pfx}SO_CHUNG_TU`, label: pfx === 'INV_' ? 'Số Document/ Invoice No' : pfx === 'PKL_' ? 'Số chứng từ/ PACKING LIST' : 'Số chứng từ' },
+                    { rx: /NGÀY|NGAY[.:]?\s*[:]\s*(.+)/i, code: pfx === 'CON_' ? `${pfx}NGAY_HOP_DONG` : `${pfx}NGAY_LAP`, label: 'Ngày chứng từ/ Date' },
+                    { rx: /Đ[ƠO]N\s*GIÁ|DON\s*GIA[.:]?\s*[:]\s*(.+)/i, code: `${pfx}C_DON_GIA`, label: 'Đơn giá' }
                 ];
                 for (const ip of inlinePatterns) {
                     if (structure.extractedFields[ip.code]) continue;
