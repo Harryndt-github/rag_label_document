@@ -1653,15 +1653,92 @@ const OCRPreview = {
 };
 
 /* ═══════════════════════════════════════════════════════════════
-   AI ENGINE — LM Studio Integration (Local Gemma 4)
+   AI ENGINE — LM Studio Integration (Qwen 3.5 9B)
    ═══════════════════════════════════════════════════════════════ */
 const AIEngine = {
-    endpoint: 'http://127.0.0.1:1234',
-    model: 'google/gemma-4-26b-a4b',
+    endpoint: 'http://localhost:1235',  // CORS proxy → LM Studio at 1234
+    model: 'qwen/qwen3.5-9b',
     isAvailable: false,
     _checking: false,
 
-    // Check if LM Studio is running
+    // ── Low-level API call ───────────────────────────────────────
+    // Qwen 3.5 uses reasoning_content for chain-of-thought, so we need
+    // to allocate enough tokens AND extract from the right field.
+    async _callLLM(messages, { temperature = 0.7, max_tokens = 8192, timeout = 120000, disableThinking = false } = {}) {
+        // Prepend /no_think to first user message if thinking should be disabled
+        // This is a Qwen 3.5 feature to skip extended reasoning for simple tasks
+        const processedMessages = disableThinking
+            ? messages.map((m, i) => {
+                if (i === messages.length - 1 && m.role === 'user') {
+                    return { ...m, content: '/no_think\n' + m.content };
+                }
+                return m;
+            })
+            : messages;
+
+        const body = {
+            model: this.model,
+            messages: processedMessages,
+            temperature,
+            max_tokens,
+            stream: false
+        };
+
+        // For Qwen 3.5: limit reasoning budget to leave room for actual content
+        // budget_tokens tells the model how many tokens to use for thinking
+        if (!disableThinking) {
+            body.budget_tokens = Math.min(1024, Math.floor(max_tokens * 0.3));
+        }
+
+        const res = await fetch(`${this.endpoint}/v1/chat/completions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(timeout)
+        });
+        if (!res.ok) throw new Error(`LLM API returned ${res.status}`);
+        const data = await res.json();
+
+        const message = data.choices?.[0]?.message;
+        let content = message?.content?.trim() || '';
+
+        // Qwen 3.5: if content is empty but reasoning_content has data,
+        // the model put everything in reasoning. Try to extract useful content from it.
+        if (!content && message?.reasoning_content) {
+            console.warn('[AIEngine] Content empty, extracting from reasoning_content');
+            const rc = message.reasoning_content;
+            // Look for JSON in reasoning content
+            const jsonMatch = rc.match(/```json\s*([\s\S]*?)```/) || rc.match(/(\{[\s\S]*\})/);
+            if (jsonMatch) {
+                content = jsonMatch[1] || jsonMatch[0];
+            } else {
+                // Last resort: use the last line(s) of reasoning as content
+                const lines = rc.split('\n').filter(l => l.trim());
+                content = lines[lines.length - 1] || '';
+            }
+        }
+
+        // Strip <think>...</think> blocks (Qwen reasoning markup)
+        content = content.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+        return content;
+    },
+
+    // ── Extract JSON from LLM response (robust) ─────────────────
+    _extractJSON(text) {
+        if (!text) return null;
+        // Strip markdown fences
+        text = text.replace(/```json\s*/gi, '').replace(/```\s*/gi, '');
+        // Try full parse first
+        try { return JSON.parse(text); } catch (_) {}
+        // Find first { ... } or [ ... ]
+        const objMatch = text.match(/\{[\s\S]*\}/);
+        if (objMatch) { try { return JSON.parse(objMatch[0]); } catch (_) {} }
+        const arrMatch = text.match(/\[[\s\S]*\]/);
+        if (arrMatch) { try { return JSON.parse(arrMatch[0]); } catch (_) {} }
+        return null;
+    },
+
+    // ── Check if LM Studio is running ────────────────────────────
     async checkConnection() {
         const dot = document.getElementById('gen-ai-status-dot');
         const text = document.getElementById('gen-ai-status-text');
@@ -1679,11 +1756,14 @@ const AIEngine = {
                 this.isAvailable = true;
                 if (dot) { dot.className = 'gen-ai-status-dot online'; }
                 if (text) { text.textContent = `Online — ${data.data?.length || 1} model(s) loaded`; }
-                // Update model name if available
+                // Auto-select qwen model if available, else use first model
                 if (data.data && data.data.length > 0) {
+                    const qwen = data.data.find(m => m.id.includes('qwen'));
+                    this.model = qwen ? qwen.id : data.data[0].id;
                     const modelEl = document.getElementById('gen-ai-model');
-                    if (modelEl) modelEl.textContent = data.data[0].id || this.model;
+                    if (modelEl) modelEl.textContent = this.model;
                 }
+                this._checking = false;
                 return true;
             }
         } catch (e) {
@@ -1696,117 +1776,163 @@ const AIEngine = {
         return false;
     },
 
-    // Generate content for a single field using AI
-    async generateFieldContent(fieldCode, fieldLabel, docContext, existingValue) {
-        if (!this.isAvailable) return existingValue || DocumentStore.generateRandomValue(fieldCode);
+    // ═══════════════════════════════════════════════════════════════
+    //  STEP 1 AI: Analyze PDF template text to extract field list
+    //  Returns: { documentType, fields: [ { code, label, sampleValue, page, x, y, width, height } ] }
+    // ═══════════════════════════════════════════════════════════════
+    async analyzeTemplateWithAI(templateStructure) {
+        if (!this.isAvailable || !templateStructure) return null;
 
-        const systemPrompt = `You are a professional document content generator specializing in business documents (invoices, contracts, bills of lading, certificates of origin, etc.).
-Your task: Generate realistic, varied, and contextually appropriate content for document fields.
-Rules:
-- Return ONLY the field value, no explanations
-- Use realistic Vietnamese/English business naming conventions
-- Vary content each time — do not repeat the same data
-- Keep values concise and fitting for the field type
-- For dates: use format YYYY-MM-DD
-- For amounts: use comma-separated numbers with 2 decimal places
-- For company names: use real-sounding Vietnamese/Chinese/international company names`;
-
-        const userPrompt = `Generate a realistic value for the field "${fieldLabel}" (code: ${fieldCode}).
-Document context: ${docContext}
-${existingValue ? `Reference value (generate something similar but different): ${existingValue}` : ''}
-Return ONLY the value, nothing else.`;
-
-        try {
-            const res = await fetch(`${this.endpoint}/v1/chat/completions`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    model: this.model,
-                    messages: [
-                        { role: 'system', content: systemPrompt },
-                        { role: 'user', content: userPrompt }
-                    ],
-                    temperature: 0.8,
-                    max_tokens: 200,
-                    stream: false
-                }),
-                signal: AbortSignal.timeout(15000)
-            });
-
-            if (res.ok) {
-                const data = await res.json();
-                const content = data.choices?.[0]?.message?.content?.trim();
-                if (content && content.length > 0 && content.length < 300) {
-                    return content;
-                }
+        // Build a condensed text representation for AI analysis
+        let textForAI = '';
+        for (const page of templateStructure.pages) {
+            textForAI += `\n=== PAGE ${page.pageNumber} (${Math.round(page.width)}x${Math.round(page.height)}) ===\n`;
+            for (const item of page.items) {
+                textForAI += `[x:${Math.round(item.x)},y:${Math.round(item.y)},w:${Math.round(item.width || 50)}] "${item.text}"\n`;
             }
-        } catch (e) {
-            console.warn(`[AIEngine] Failed for ${fieldCode}:`, e.message);
         }
 
-        // Fallback to random generator
-        return DocumentStore.generateRandomValue(fieldCode);
-    },
+        // Trim aggressively to reduce reasoning overhead on local models
+        if (textForAI.length > 3000) {
+            textForAI = textForAI.substring(0, 3000) + '\n... (truncated)';
+        }
 
-    // Batch generate content for multiple fields using a single AI call (more efficient)
-    async generateBatchContent(fields, docContext) {
-        if (!this.isAvailable) return null;
+        const systemPrompt = `You are a document analysis expert. Given extracted text with coordinates from a PDF business document, identify:
+1. The document type (Invoice, Sales Contract, Bill of Lading, Packing List, Certificate of Origin, Credit Note, Debit Note, etc.)
+2. All fillable/variable fields - these are the label:value pairs where values change between documents.
 
-        const fieldList = fields.map(f => `- ${f.code} (${f.label})`).join('\n');
-        const systemPrompt = `You are a professional document content generator for business documents.
-Generate realistic, varied content for each field. Return a JSON object with field codes as keys and generated values as values.
-Rules: Return ONLY valid JSON. Use realistic Vietnamese/English business data. Vary content each time.`;
+For each field, provide:
+- code: a snake_case identifier (Vietnamese style: TEN_NGUOI_BAN, SO_HOA_DON, NGAY, etc.)
+- label: human-readable label
+- sampleValue: the current value in the template
+- page: page number (1-based)
+- x, y: approximate coordinates of the VALUE (not the label)
+- width, height: approximate size of the value area
 
-        const userPrompt = `Generate realistic values for these fields in a ${docContext} document:
-${fieldList}
+IMPORTANT: Focus on identifying VARIABLE fields (names, dates, amounts, addresses, numbers) NOT static headers or titles.
+Return ONLY valid JSON, no explanation.`;
 
-Return ONLY a JSON object like: {"field_code_1": "value1", "field_code_2": "value2", ...}`;
+        const userPrompt = `Analyze this PDF document and extract all variable fields:
+
+${textForAI}
+
+Return JSON in this exact format:
+{
+  "documentType": "Invoice",
+  "fields": [
+    {"code": "SO_HOA_DON", "label": "Invoice Number", "sampleValue": "INV-001", "page": 1, "x": 200, "y": 50, "width": 150, "height": 14},
+    ...
+  ]
+}`;
 
         try {
-            const res = await fetch(`${this.endpoint}/v1/chat/completions`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    model: this.model,
-                    messages: [
-                        { role: 'system', content: systemPrompt },
-                        { role: 'user', content: userPrompt }
-                    ],
-                    temperature: 0.85,
-                    max_tokens: 1500,
-                    stream: false
-                }),
-                signal: AbortSignal.timeout(30000)
-            });
+            console.log('[AIEngine] Analyzing template with AI (this may take 2-5 minutes)...');
+            const content = await this._callLLM([
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt }
+            ], { temperature: 0.2, max_tokens: 16384, timeout: 600000, disableThinking: true });
 
-            if (res.ok) {
-                const data = await res.json();
-                let content = data.choices?.[0]?.message?.content?.trim();
-                if (content) {
-                    // Try to extract JSON from the response
-                    const jsonMatch = content.match(/\{[\s\S]*\}/);
-                    if (jsonMatch) {
-                        try {
-                            return JSON.parse(jsonMatch[0]);
-                        } catch (e) {
-                            console.warn('[AIEngine] JSON parse failed, using individual fallback');
-                        }
-                    }
-                }
+            console.log('[AIEngine] AI response received, length:', content?.length || 0, 'preview:', content?.substring(0, 100));
+
+            const result = this._extractJSON(content);
+            if (result && result.fields && Array.isArray(result.fields) && result.fields.length > 0) {
+                console.log(`[AIEngine] AI extracted ${result.fields.length} fields, type: ${result.documentType}`);
+                return result;
             }
+            console.warn('[AIEngine] AI returned invalid structure. Raw:', content?.substring(0, 500));
+        } catch (e) {
+            console.warn('[AIEngine] Template analysis failed:', e.message);
+        }
+        return null;
+    },
+
+    // ═══════════════════════════════════════════════════════════════
+    //  STEP 2 AI: Generate a complete document worth of field values
+    //  Uses template context + optional Excel samples as reference
+    // ═══════════════════════════════════════════════════════════════
+    async generateDocumentContent(fields, docContext, sampleValues, docIndex) {
+        if (!this.isAvailable) return null;
+
+        const fieldDesc = fields.map(f => {
+            let desc = `- ${f.code} (${f.label})`;
+            if (f.sampleValue) desc += ` [example: "${f.sampleValue}"]`;
+            return desc;
+        }).join('\n');
+
+        const sampleSection = sampleValues && Object.keys(sampleValues).length > 0
+            ? `\nReference data from Excel (create SIMILAR but DIFFERENT values):\n${Object.entries(sampleValues).map(([k,v]) => `  ${k}: "${v}"`).join('\n')}`
+            : '';
+
+        const systemPrompt = `You are a professional business document generator. Generate realistic data for Vietnamese/international trade documents.
+
+STRICT RULES:
+1. Return ONLY a valid JSON object, no explanations, no markdown
+2. Keys must match the field codes exactly
+3. Generate varied, realistic data — NOT copied from samples
+4. Company names: use real-sounding Vietnamese/Chinese/international names
+5. Dates: use YYYY-MM-DD format, dates should be recent (2025-2026)
+6. Amounts: use numbers with 2 decimal places (e.g., "125,000.00")
+7. Document numbers: use format like INV-XX123456, SC-YY789012
+8. Addresses: use realistic Vietnamese/Chinese business addresses
+9. This is document #${docIndex + 1}, so make data unique from other documents`;
+
+        const userPrompt = `Generate realistic values for ALL fields below for a "${docContext}" document:
+
+${fieldDesc}
+${sampleSection}
+
+Return JSON: {"field_code_1": "value1", "field_code_2": "value2", ...}`;
+
+        try {
+            const content = await this._callLLM([
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt }
+            ], { temperature: 0.85, max_tokens: 4096, timeout: 120000, disableThinking: true });
+
+            const result = this._extractJSON(content);
+            if (result && typeof result === 'object' && !Array.isArray(result)) {
+                return result;
+            }
+            console.warn('[AIEngine] Batch parse failed, content:', content?.substring(0, 200));
         } catch (e) {
             console.warn('[AIEngine] Batch generation failed:', e.message);
         }
         return null;
     },
 
-    // Use AI to improve/enhance existing Excel data values
+    // ═══════════════════════════════════════════════════════════════
+    //  Generate content for a single field (fallback)
+    // ═══════════════════════════════════════════════════════════════
+    async generateFieldContent(fieldCode, fieldLabel, docContext, existingValue) {
+        if (!this.isAvailable) return existingValue || DocumentStore.generateRandomValue(fieldCode);
+
+        const prompt = `Generate a single realistic value for a "${fieldLabel}" field (code: ${fieldCode}) in a ${docContext} document.
+${existingValue ? `Reference: "${existingValue}" — generate something similar but different.` : ''}
+Return ONLY the value, nothing else. No quotes, no explanation.`;
+
+        try {
+            const content = await this._callLLM([
+                { role: 'user', content: prompt }
+            ], { temperature: 0.8, max_tokens: 1024, timeout: 30000, disableThinking: true });
+
+            if (content && content.length > 0 && content.length < 300) {
+                // Remove surrounding quotes if present
+                return content.replace(/^["']|["']$/g, '');
+            }
+        } catch (e) {
+            console.warn(`[AIEngine] Field generation failed for ${fieldCode}:`, e.message);
+        }
+        return existingValue || DocumentStore.generateRandomValue(fieldCode);
+    },
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Enhance existing Excel data values with AI
+    // ═══════════════════════════════════════════════════════════════
     async enhanceExcelContent(fieldCode, fieldLabel, originalValue, docContext) {
         if (!this.isAvailable || !originalValue) return originalValue;
 
         const prompt = `You are a document content improvement assistant.
-Given this field from a ${docContext} document:
-Field: ${fieldLabel} (${fieldCode})
+Field: ${fieldLabel} (${fieldCode}) in a ${docContext} document.
 Current value: "${originalValue}"
 
 If the value looks correct and complete, return it unchanged.
@@ -1814,25 +1940,12 @@ If it can be improved (better formatting, more realistic, more complete), provid
 Return ONLY the value, no explanation.`;
 
         try {
-            const res = await fetch(`${this.endpoint}/v1/chat/completions`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    model: this.model,
-                    messages: [{ role: 'user', content: prompt }],
-                    temperature: 0.3,
-                    max_tokens: 200,
-                    stream: false
-                }),
-                signal: AbortSignal.timeout(10000)
-            });
+            const content = await this._callLLM([
+                { role: 'user', content: prompt }
+            ], { temperature: 0.3, max_tokens: 1024, timeout: 30000, disableThinking: true });
 
-            if (res.ok) {
-                const data = await res.json();
-                const content = data.choices?.[0]?.message?.content?.trim();
-                if (content && content.length > 0 && content.length < 300) {
-                    return content;
-                }
+            if (content && content.length > 0 && content.length < 300) {
+                return content.replace(/^["']|["']$/g, '');
             }
         } catch (e) {
             console.warn(`[AIEngine] Enhancement failed for ${fieldCode}`);
@@ -2131,15 +2244,18 @@ const GeneratePage = {
     _allDocInstances: null,
     _maxTemplatePage: 1,
     _templateStructure: null, // Extracted template structure from Step 1
+    _aiExtractedFields: null, // AI-analyzed fields from template
 
     // ═══════════════════════════════════════════════════════════════
     //  STEP 1: Extract Template Structure (PDF → Word-like Schema)
+    //  Uses pdf.js for text extraction, then AI for intelligent field detection
     // ═══════════════════════════════════════════════════════════════
     async _extractTemplateStructure() {
         const select = document.getElementById('gen-source-select');
         const tpl = DocumentStore.uploadedTemplates.find(t => t.id === select.value);
         if (!tpl || !tpl._file) {
             this._templateStructure = null;
+            this._aiExtractedFields = null;
             return;
         }
 
@@ -2189,17 +2305,51 @@ const GeneratePage = {
             // Detect document type from full text
             structure.documentType = this._detectDocTypeFromText(structure.fullText);
 
-            // Auto-detect field locations from template text patterns
+            // Auto-detect field locations from template text patterns (regex fallback)
             this._autoDetectFieldsFromTemplate(structure);
+
+            // Try AI-powered field detection (much more comprehensive)
+            if (AIEngine.isAvailable) {
+                console.log('[Step1] Attempting AI-powered field extraction...');
+                const aiResult = await AIEngine.analyzeTemplateWithAI(structure);
+                if (aiResult && aiResult.fields && aiResult.fields.length > 0) {
+                    this._aiExtractedFields = aiResult.fields;
+                    // Override document type from AI if detected
+                    if (aiResult.documentType) {
+                        structure.documentType = aiResult.documentType;
+                    }
+                    // Merge AI fields into extractedFields (AI takes priority)
+                    for (const f of aiResult.fields) {
+                        structure.extractedFields[f.code] = {
+                            label: f.label,
+                            sampleValue: f.sampleValue || '',
+                            x: f.x || 0,
+                            y: f.y || 0,
+                            width: f.width || 150,
+                            height: f.height || 14,
+                            page: f.page || 1,
+                            fontName: 'default',
+                            fontSize: 11
+                        };
+                    }
+                    console.log(`[Step1] AI extracted ${aiResult.fields.length} fields (overrides regex: ${Object.keys(structure.extractedFields).length} total)`);
+                } else {
+                    this._aiExtractedFields = null;
+                    console.log('[Step1] AI field extraction returned no results, using regex fallback');
+                }
+            } else {
+                this._aiExtractedFields = null;
+            }
 
             this._templateStructure = structure;
             this._maxTemplatePage = totalPages;
 
-            console.log(`[Step1] Template extracted: ${totalPages} pages, ${Object.keys(structure.extractedFields).length} auto-detected fields, type: ${structure.documentType}`);
+            console.log(`[Step1] Template extracted: ${totalPages} pages, ${Object.keys(structure.extractedFields).length} fields, type: ${structure.documentType}`);
             this.updateTemplateInfo();
         } catch (err) {
             console.error('[Step1] Template extraction error:', err);
             this._templateStructure = null;
+            this._aiExtractedFields = null;
         }
     },
 
@@ -2220,7 +2370,7 @@ const GeneratePage = {
         return 'Document';
     },
 
-    // Auto-detect label:value pairs from template text positions
+    // Auto-detect label:value pairs from template text positions (regex fallback)
     _autoDetectFieldsFromTemplate(structure) {
         const labelPatterns = [
             { pattern: /(?:NO|No|NUMBER|Number)[.:;#\s]*/i, code: 'SO_CHUNG_TU', label: 'Document Number' },
@@ -2269,46 +2419,55 @@ const GeneratePage = {
     },
 
     // ═══════════════════════════════════════════════════════════════
-    //  STEP 2: Populate Content (Excel Data + AI Enhancement)
+    //  STEP 2: Populate Content (AI-powered or Excel or Random)
+    //  Now uses AIEngine.generateDocumentContent for full-document generation
     // ═══════════════════════════════════════════════════════════════
-    async _populateContentForDocument(fields, docContext, useAI, existingValues, log) {
+    async _populateContentForDocument(fields, docContext, useAI, existingValues, log, docIndex) {
         const aiEnhance = document.getElementById('gen-ai-enhance')?.checked || false;
         const populatedFields = {};
 
+        // ── Mode 1: Full AI generation (data source = AI Engine, or needsPopulation + AI) ──
         if (useAI && AIEngine.isAvailable) {
-            // Try batch AI generation first
             const fieldList = Object.keys(fields).map(fc => ({
                 code: fc,
-                label: fields[fc].label || fc
+                label: fields[fc].label || fc,
+                sampleValue: fields[fc].sampleValue || ''
             }));
 
-            this._log(log, `🤖 Requesting AI content for ${fieldList.length} fields...`, 'info');
+            this._log(log, `🤖 AI generating content for ${fieldList.length} fields (doc #${docIndex + 1})...`, 'info');
 
-            const batchResult = await AIEngine.generateBatchContent(fieldList, docContext);
+            // Try batch AI generation with the improved method
+            const batchResult = await AIEngine.generateDocumentContent(fieldList, docContext, existingValues, docIndex);
             if (batchResult) {
+                let matched = 0;
                 Object.keys(fields).forEach(fc => {
-                    if (batchResult[fc]) {
-                        populatedFields[fc] = batchResult[fc];
+                    if (batchResult[fc] !== undefined && batchResult[fc] !== '') {
+                        populatedFields[fc] = String(batchResult[fc]);
+                        matched++;
                     } else {
                         populatedFields[fc] = DocumentStore.generateRandomValue(fc);
                     }
                 });
-                this._log(log, `✓ AI generated ${Object.keys(batchResult).length} field values`, 'success');
+                this._log(log, `✓ AI generated ${matched}/${fieldList.length} field values`, 'success');
                 return populatedFields;
             }
 
             // Fallback: individual field generation
-            this._log(log, `⚠ Batch failed, generating fields individually...`, 'info');
+            this._log(log, `⚠ Batch AI failed, generating fields individually...`, 'info');
+            let generated = 0;
             for (const fc of Object.keys(fields)) {
-                populatedFields[fc] = await AIEngine.generateFieldContent(
+                const val = await AIEngine.generateFieldContent(
                     fc, fields[fc].label || fc, docContext, existingValues?.[fc]
                 );
+                populatedFields[fc] = val;
+                generated++;
             }
+            this._log(log, `✓ Generated ${generated} fields individually`, 'success');
             return populatedFields;
         }
 
-        if (aiEnhance && existingValues && AIEngine.isAvailable) {
-            // Enhance existing Excel values with AI
+        // ── Mode 2: Enhance existing Excel values with AI ──
+        if (aiEnhance && existingValues && Object.keys(existingValues).length > 0 && AIEngine.isAvailable) {
             this._log(log, `🤖 Enhancing Excel data with AI...`, 'info');
             let enhanced = 0;
             for (const fc of Object.keys(fields)) {
@@ -2328,7 +2487,7 @@ const GeneratePage = {
             return populatedFields;
         }
 
-        // Use existing values or random generation
+        // ── Mode 3: Use existing values or random generation ──
         Object.keys(fields).forEach(fc => {
             populatedFields[fc] = existingValues?.[fc] || DocumentStore.generateRandomValue(fc);
         });
@@ -2336,7 +2495,7 @@ const GeneratePage = {
     },
 
     // ═══════════════════════════════════════════════════════════════
-    //  STEP 3: Start Generation (Full Pipeline)
+    //  FULL PIPELINE: Start Generation (orchestrates Steps 1-3)
     // ═══════════════════════════════════════════════════════════════
     async startGeneration() {
         if (this.isGenerating) return;
@@ -2372,39 +2531,51 @@ const GeneratePage = {
         DocumentStore.clearGeneratedDocuments();
 
         // ════════════════════════════════════════════════
+        //  PRE-CHECK: Ensure AI is connected if needed
+        // ════════════════════════════════════════════════
+        if (useAI) {
+            this._log(log, `Checking AI Engine connection...`, 'info');
+            const aiOk = await AIEngine.checkConnection();
+            if (aiOk) {
+                this._log(log, `✓ AI Engine online — model: ${AIEngine.model}`, 'success');
+            } else {
+                this._log(log, `⚠ AI Engine offline — will use synthetic data as fallback`, 'info');
+            }
+        }
+
+        // ════════════════════════════════════════════════
         //  STEP 1: Extract Template Structure
         // ════════════════════════════════════════════════
-        this._log(log, `═══ STEP 1: Template Extraction ═══`, 'info');
+        this._log(log, `\n═══ STEP 1: Template Extraction ═══`, 'info');
         this._log(log, `Loading template: "${template.name}"`, 'msg');
 
-        if (!this._templateStructure) {
+        // Force re-extraction if AI just came online but we haven't used it yet
+        const needsAIExtraction = useAI && AIEngine.isAvailable && !this._aiExtractedFields;
+        if (!this._templateStructure || needsAIExtraction) {
+            this._log(log, needsAIExtraction ? `Re-extracting with AI assistance (this may take 2-5 minutes)...` : `Extracting template structure...`, 'info');
             await this._extractTemplateStructure();
         }
 
         if (this._templateStructure) {
             const ts = this._templateStructure;
             this._log(log, `✓ Template: ${ts.totalPages} page(s), type: ${ts.documentType}`, 'success');
-            this._log(log, `✓ Auto-detected fields: ${Object.keys(ts.extractedFields).length}`, 'success');
+            this._log(log, `✓ Detected fields: ${Object.keys(ts.extractedFields).length}${this._aiExtractedFields ? ' (AI-powered)' : ' (regex)'}`, 'success');
+            if (this._aiExtractedFields) {
+                const fieldNames = this._aiExtractedFields.slice(0, 8).map(f => f.label || f.code).join(', ');
+                const more = this._aiExtractedFields.length > 8 ? ` +${this._aiExtractedFields.length - 8} more` : '';
+                this._log(log, `  Fields: ${fieldNames}${more}`, 'msg');
+            }
         } else {
             this._log(log, `⚠ Template structure not extracted — using schema-based generation`, 'info');
         }
+
+        fill.style.width = '10%';
 
         // ════════════════════════════════════════════════
         //  STEP 2: Build Content (Excel Data / AI / Random)
         // ════════════════════════════════════════════════
         this._log(log, `\n═══ STEP 2: Content Population ═══`, 'info');
-        this._log(log, `Data source: ${dataSource} | AI Enhance: ${useAI}`, 'info');
-
-        // Check AI availability if needed
-        if (useAI && !AIEngine.isAvailable) {
-            this._log(log, `Checking AI Engine connection...`, 'info');
-            const aiOk = await AIEngine.checkConnection();
-            if (aiOk) {
-                this._log(log, `✓ AI Engine online — using ${AIEngine.model}`, 'success');
-            } else {
-                this._log(log, `⚠ AI Engine offline — falling back to random generation`, 'info');
-            }
-        }
+        this._log(log, `Data source: ${dataSource} | AI: ${useAI && AIEngine.isAvailable ? '✓ Active' : '✗ Inactive'}`, 'info');
 
         const fields = DocumentStore.ocrData;
         const generatedDocs = [];
@@ -2425,7 +2596,8 @@ const GeneratePage = {
                     width: f.width,
                     height: f.height,
                     page: f.page,
-                    label: f.label
+                    label: f.label,
+                    sampleValue: f.sampleValue || ''
                 };
             });
             this._log(log, `Using ${Object.keys(effectiveSchema).length} fields from template extraction`, 'info');
@@ -2464,7 +2636,8 @@ const GeneratePage = {
                         width: coord.width,
                         height: coord.height,
                         page: coord.page,
-                        label: coord.label
+                        label: coord.label,
+                        sampleValue: coord.sampleValue || ''
                     };
                 });
                 generationQueue.push({
@@ -2507,6 +2680,12 @@ const GeneratePage = {
         // ════════════════════════════════════════════════
         for (let i = 0; i < generationQueue.length; i++) {
             const item = generationQueue[i];
+            
+            // Update progress
+            const populatePct = 10 + (i / generationQueue.length) * 40;
+            fill.style.width = populatePct + '%';
+            countEl.textContent = `Populating ${i + 1} / ${actualCount}`;
+
             if (item.needsPopulation || (useAI && AIEngine.isAvailable)) {
                 const existingValues = {};
                 Object.keys(item.fields).forEach(fc => {
@@ -2517,7 +2696,8 @@ const GeneratePage = {
                     item.fields, docContext,
                     item.needsPopulation && useAI, // Use full AI generation for items without data
                     existingValues,
-                    log
+                    log,
+                    i  // Pass document index for unique generation
                 );
 
                 // Update field values
