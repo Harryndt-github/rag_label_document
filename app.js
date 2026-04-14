@@ -1682,6 +1682,267 @@ const OCRPreview = {
 };
 
 /* ═══════════════════════════════════════════════════════════════
+   DOCLING ENGINE — Deep Document Structure Analysis
+   Communicates with the local Docling Python server for
+   precise PDF parsing with bounding boxes + key-value detection.
+   ═══════════════════════════════════════════════════════════════ */
+const DoclingEngine = {
+    endpoint: 'http://localhost:1235',  // CORS proxy → Docling server at 5050
+    isAvailable: false,
+    _checking: false,
+
+    // ── Check if Docling server is running ─────────────────────────
+    async checkConnection() {
+        this._checking = true;
+        try {
+            const res = await fetch(`${this.endpoint}/api/docling/health`, {
+                method: 'GET',
+                signal: AbortSignal.timeout(5000)
+            });
+            if (res.ok) {
+                const data = await res.json();
+                this.isAvailable = data.status === 'online';
+                console.log(`[DoclingEngine] ${this.isAvailable ? '✓ Online' : '✗ Offline'} — v${data.version || '?'}`);
+                this._checking = false;
+                return this.isAvailable;
+            }
+        } catch (e) {
+            console.log('[DoclingEngine] Server not available:', e.message);
+        }
+        this.isAvailable = false;
+        this._checking = false;
+        return false;
+    },
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Parse a PDF file using Docling backend
+    //  Returns structured JSON with:
+    //    - textItems[]: text blocks with precise {x, y, width, height, page}
+    //    - keyValuePairs[]: detected label:value pairs with separate bboxes
+    //    - tables[]: detected tables with cell data
+    //    - documentType: classified document type
+    //    - fullText: full markdown text
+    // ═══════════════════════════════════════════════════════════════
+    async parseDocument(file) {
+        if (!this.isAvailable) {
+            console.warn('[DoclingEngine] Cannot parse — server offline');
+            return null;
+        }
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            console.log(`[DoclingEngine] Sending ${file.name} (${(file.size / 1024).toFixed(1)} KB) to Docling server...`);
+
+            const res = await fetch(`${this.endpoint}/api/docling/parse`, {
+                method: 'POST',
+                body: formData,
+                signal: AbortSignal.timeout(300000) // 5 minutes for large documents
+            });
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                console.error('[DoclingEngine] Parse failed:', res.status, err.message);
+                return null;
+            }
+
+            const result = await res.json();
+
+            if (result.status === 'error') {
+                console.error('[DoclingEngine] Server error:', result.message);
+                return null;
+            }
+
+            console.log(`[DoclingEngine] ✓ Parsed: ${result.textItems?.length || 0} text items, ` +
+                `${result.keyValuePairs?.length || 0} KV pairs, ` +
+                `${result.tables?.length || 0} tables, ` +
+                `type: ${result.documentType}, pages: ${result.totalPages}`);
+
+            return result;
+
+        } catch (e) {
+            console.error('[DoclingEngine] Parse error:', e.message);
+            return null;
+        }
+    },
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Convert Docling KV pairs to the field schema format used by
+    //  the generation pipeline. Each field has:
+    //    - labelBbox: where the label text is (NOT white-boxed)
+    //    - valueBbox: where the value is (WILL be white-boxed + replaced)
+    //    - sampleValue: original value from the template
+    // ═══════════════════════════════════════════════════════════════
+    buildFieldSchemaFromDocling(doclingResult) {
+        if (!doclingResult) return {};
+
+        const schema = {};
+
+        // ── Primary: Use detected key-value pairs ──
+        if (doclingResult.keyValuePairs && doclingResult.keyValuePairs.length > 0) {
+            for (const kv of doclingResult.keyValuePairs) {
+                const code = kv.fieldCode;
+                if (!code || schema[code]) continue;
+
+                schema[code] = {
+                    label: kv.label || kv.labelText || code,
+                    sampleValue: kv.value || '',
+                    // VALUE bounding box — this is what gets white-boxed
+                    x: kv.valueBbox?.x || 0,
+                    y: kv.valueBbox?.y || 0,
+                    width: kv.valueBbox?.width || 150,
+                    height: kv.valueBbox?.height || 14,
+                    // LABEL bounding box — this is PRESERVED (not white-boxed)
+                    labelX: kv.labelBbox?.x || 0,
+                    labelY: kv.labelBbox?.y || 0,
+                    labelWidth: kv.labelBbox?.width || 50,
+                    labelHeight: kv.labelBbox?.height || 14,
+                    page: kv.page || 1,
+                    confidence: kv.confidence || 0.8,
+                    source: 'docling',
+                    fontName: 'default',
+                    fontSize: 10
+                };
+            }
+        }
+
+        // ── Secondary: Scan textItems for additional label:value patterns ──
+        // This catches fields that Docling's KV detector missed
+        if (doclingResult.textItems && doclingResult.textItems.length > 0) {
+            const inlinePatterns = [
+                { rx: /^(.+?)\s*[:：]\s*(.+)$/, detect: true },
+            ];
+            const knownLabels = [
+                { pattern: /\b(?:NO|No\.?|Number|Ref|Số)\b/i, code: 'SO_CHUNG_TU', label: 'Document Number' },
+                { pattern: /\b(?:DATE|Dated|Ngày)\b/i, code: 'NGAY', label: 'Date' },
+                { pattern: /\b(?:BUYER|Người\s*mua)\b/i, code: 'TEN_NGUOI_MUA', label: 'Buyer' },
+                { pattern: /\b(?:SELLER|Người\s*bán)\b/i, code: 'TEN_NGUOI_BAN', label: 'Seller' },
+                { pattern: /\b(?:TOTAL|Amount|Tổng)\b/i, code: 'TONG_TIEN', label: 'Total Amount' },
+                { pattern: /\b(?:QUANTITY|Qty|Số\s*lượng)\b/i, code: 'SO_LUONG', label: 'Quantity' },
+                { pattern: /\b(?:UNIT\s*PRICE|Đơn\s*giá)\b/i, code: 'DON_GIA', label: 'Unit Price' },
+                { pattern: /\b(?:COMMODITY|Goods|Description|Hàng\s*hóa)\b/i, code: 'MO_TA_HANG', label: 'Goods Description' },
+                { pattern: /\b(?:PAYMENT|Thanh\s*toán)\b/i, code: 'THANH_TOAN', label: 'Payment Terms' },
+                { pattern: /\b(?:SHIPMENT|Giao\s*hàng)\b/i, code: 'GIAO_HANG', label: 'Shipment' },
+                { pattern: /\b(?:ADDRESS|Địa\s*chỉ)\b/i, code: 'DIA_CHI', label: 'Address' },
+                { pattern: /\b(?:PORT\s*OF\s*LOADING)\b/i, code: 'CANG_XUAT', label: 'Loading Port' },
+                { pattern: /\b(?:PORT\s*OF\s*(?:DISCHARGE|DESTINATION))\b/i, code: 'CANG_NHAP', label: 'Discharge Port' },
+                { pattern: /\b(?:VESSEL|Ship|Tàu)\b/i, code: 'TAU', label: 'Vessel' },
+                { pattern: /\b(?:CONTAINER)\b/i, code: 'SO_CONTAINER', label: 'Container No.' },
+                { pattern: /\b(?:CONSIGNEE)\b/i, code: 'NGUOI_NHAN', label: 'Consignee' },
+                { pattern: /\b(?:SHIPPER)\b/i, code: 'NGUOI_GUI', label: 'Shipper' },
+                { pattern: /\b(?:APPLICANT)\b/i, code: 'NGUOI_YEU_CAU', label: 'Applicant' },
+                { pattern: /\b(?:BENEFICIARY)\b/i, code: 'NGUOI_THU_HUONG', label: 'Beneficiary' },
+                { pattern: /\b(?:BANK|Ngân\s*hàng)\b/i, code: 'NGAN_HANG', label: 'Bank' },
+                { pattern: /\b(?:SWIFT)\b/i, code: 'SWIFT', label: 'SWIFT Code' },
+                { pattern: /\b(?:TEL|Phone|Telephone)\b/i, code: 'DIEN_THOAI', label: 'Phone' },
+                { pattern: /\b(?:CURRENCY|Loại\s*tiền)\b/i, code: 'LOAI_TIEN', label: 'Currency' },
+            ];
+
+            for (const item of doclingResult.textItems) {
+                const text = (item.text || '').trim();
+                if (!text || text.length < 3 || !item.bbox) continue;
+
+                // Check for "LABEL: VALUE" inline patterns
+                const inlineMatch = text.match(/^(.+?)\s*[:：]\s*(.+)$/);
+                if (inlineMatch) {
+                    const labelPart = inlineMatch[1].trim();
+                    const valuePart = inlineMatch[2].trim();
+
+                    for (const kl of knownLabels) {
+                        if (schema[kl.code]) continue;
+                        if (kl.pattern.test(labelPart)) {
+                            const labelRatio = labelPart.length / Math.max(text.length, 1);
+                            schema[kl.code] = {
+                                label: kl.label,
+                                sampleValue: valuePart,
+                                x: item.bbox.x + item.bbox.width * labelRatio,
+                                y: item.bbox.y,
+                                width: item.bbox.width * (1 - labelRatio),
+                                height: item.bbox.height || 14,
+                                labelX: item.bbox.x,
+                                labelY: item.bbox.y,
+                                labelWidth: item.bbox.width * labelRatio,
+                                labelHeight: item.bbox.height || 14,
+                                page: item.page || 1,
+                                confidence: 0.75,
+                                source: 'docling_textitem',
+                                fontName: 'default',
+                                fontSize: 10
+                            };
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        console.log(`[DoclingEngine] Built field schema: ${Object.keys(schema).length} fields`);
+        return schema;
+    },
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Match Excel field_codes to Docling-extracted field codes
+    //  Uses fuzzy matching (normalized code comparison, label similarity)
+    // ═══════════════════════════════════════════════════════════════
+    matchExcelFieldsToSchema(excelSchema, doclingSchema) {
+        if (!excelSchema || !doclingSchema) return {};
+
+        const mapping = {}; // excelFieldCode → doclingFieldCode
+        const normalize = (s) => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+        const doclingCodes = Object.keys(doclingSchema);
+        const doclingNormalized = doclingCodes.map(c => normalize(c));
+
+        for (const excelCode of Object.keys(excelSchema)) {
+            const excelNorm = normalize(excelCode);
+
+            // Strategy 1: Exact match (after normalization)
+            const exactIdx = doclingNormalized.indexOf(excelNorm);
+            if (exactIdx >= 0) {
+                mapping[excelCode] = doclingCodes[exactIdx];
+                continue;
+            }
+
+            // Strategy 2: Partial match (code contains the other)
+            let bestMatch = null;
+            let bestScore = 0;
+
+            for (let i = 0; i < doclingCodes.length; i++) {
+                const dNorm = doclingNormalized[i];
+                
+                // Check if Excel code contains the Docling code or vice versa
+                if (excelNorm.includes(dNorm) || dNorm.includes(excelNorm)) {
+                    const score = Math.min(excelNorm.length, dNorm.length) / Math.max(excelNorm.length, dNorm.length);
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestMatch = doclingCodes[i];
+                    }
+                }
+
+                // Check shared word segments
+                const excelWords = excelNorm.match(/[A-Z]+/g) || [];
+                const dWords = dNorm.match(/[A-Z]+/g) || [];
+                const shared = excelWords.filter(w => dWords.some(dw => dw.includes(w) || w.includes(dw)));
+                const wordScore = shared.length / Math.max(excelWords.length, dWords.length, 1);
+                if (wordScore > bestScore && wordScore > 0.3) {
+                    bestScore = wordScore;
+                    bestMatch = doclingCodes[i];
+                }
+            }
+
+            if (bestMatch && bestScore > 0.3) {
+                mapping[excelCode] = bestMatch;
+            }
+        }
+
+        console.log(`[DoclingEngine] Mapped ${Object.keys(mapping).length}/${Object.keys(excelSchema).length} Excel fields to Docling schema`);
+        return mapping;
+    }
+};
+
+
+/* ═══════════════════════════════════════════════════════════════
    AI ENGINE — LM Studio Integration (Qwen 3.5 9B)
    ═══════════════════════════════════════════════════════════════ */
 const AIEngine = {
@@ -2145,6 +2406,7 @@ const GeneratePage = {
                 <div class="template-info-row"><span>Uploaded:</span><span>${tpl.uploadedAt ? tpl.uploadedAt.toLocaleDateString() : 'N/A'}</span></div>
                 <div class="template-info-row"><span>Schema Fields:</span><span style="color:var(--color-accent);font-weight:600">${fieldCount} field(s)</span></div>
                 ${templateStruct ? `<div class="template-info-row"><span>Template Structure:</span><span style="color:var(--color-success);font-weight:600">✓ Extracted</span></div>` : ''}
+                ${this._doclingFieldSchema ? `<div class="template-info-row"><span>Extraction Engine:</span><span style="color:#22d3ee;font-weight:600">🔬 Docling (Deep Parse)</span></div>` : (this._aiExtractedFields ? `<div class="template-info-row"><span>Extraction Engine:</span><span style="color:var(--color-accent);font-weight:600">🤖 AI Engine</span></div>` : (templateStruct ? `<div class="template-info-row"><span>Extraction Engine:</span><span style="font-weight:600">Regex Pattern</span></div>` : ''))}
                 ${pageBreakdown ? `<div class="template-info-row"><span>Page Layout:</span><span style="font-family:var(--font-mono);font-size:10px">${pageBreakdown}</span></div>` : ''}
                 ${docInstCount > 0 ? `<div class="template-info-row"><span>Excel Instances:</span><span style="color:var(--color-success);font-weight:600">${docInstCount} document(s)</span></div>` : ''}
             `;
@@ -2297,10 +2559,14 @@ const GeneratePage = {
     _maxTemplatePage: 1,
     _templateStructure: null, // Extracted template structure from Step 1
     _aiExtractedFields: null, // AI-analyzed fields from template
+    _doclingResult: null,     // Raw Docling parse result (deep structure)
+    _doclingFieldSchema: null, // Docling-built field schema with label/value bboxes
 
     // ═══════════════════════════════════════════════════════════════
-    //  STEP 1: Extract Template Structure (PDF → Word-like Schema)
-    //  Uses pdf.js for text extraction, then AI for intelligent field detection
+    //  STEP 1: Extract Template Structure
+    //  Priority: Docling → AI → Regex → Default fallback
+    //  Docling provides precise bounding boxes with SEPARATE
+    //  label vs value regions for accurate white-boxing.
     // ═══════════════════════════════════════════════════════════════
     async _extractTemplateStructure() {
         const select = document.getElementById('gen-source-select');
@@ -2308,6 +2574,8 @@ const GeneratePage = {
         if (!tpl || !tpl._file) {
             this._templateStructure = null;
             this._aiExtractedFields = null;
+            this._doclingResult = null;
+            this._doclingFieldSchema = null;
             return;
         }
 
@@ -2325,16 +2593,16 @@ const GeneratePage = {
                 extractedFields: {}
             };
 
+            // ── Always extract with pdf.js for basic text + page structure ──
             for (let i = 1; i <= totalPages; i++) {
                 const page = await pdf.getPage(i);
                 const textContent = await page.getTextContent();
                 const viewport = page.getViewport({ scale: 1 });
 
-                // Extract text items with their positions
                 const pageItems = textContent.items.map(item => ({
                     text: item.str,
                     x: item.transform[4],
-                    y: viewport.height - item.transform[5], // Convert to top-down Y
+                    y: viewport.height - item.transform[5],
                     width: item.width,
                     height: item.height || 12,
                     fontName: item.fontName || 'default',
@@ -2354,62 +2622,169 @@ const GeneratePage = {
                 structure.fullText += (i > 1 ? '\n\n--- PAGE ' + i + ' ---\n\n' : '') + pageText;
             }
 
-            // Detect document type from full text
             structure.documentType = this._detectDocTypeFromText(structure.fullText);
 
-            // Auto-detect field locations from template text patterns (regex fallback)
-            this._autoDetectFieldsFromTemplate(structure);
+            // ═════════════════════════════════════════════════════
+            //  PRIORITY 1: Docling Deep Parse (most accurate)
+            // ═════════════════════════════════════════════════════
+            let doclingSuccess = false;
 
-            // Try AI-powered field detection (much more comprehensive)
-            if (AIEngine.isAvailable) {
-                console.log('[Step1] Attempting AI-powered field extraction...');
-                const aiResult = await AIEngine.analyzeTemplateWithAI(structure);
-                if (aiResult && aiResult.fields && aiResult.fields.length > 0) {
-                    this._aiExtractedFields = aiResult.fields;
-                    // Override document type from AI if detected
-                    if (aiResult.documentType) {
-                        structure.documentType = aiResult.documentType;
-                    }
-                    // Merge AI fields into extractedFields (AI takes priority)
-                    for (const f of aiResult.fields) {
-                        structure.extractedFields[f.code] = {
-                            label: f.label,
-                            sampleValue: f.sampleValue || '',
-                            x: f.x || 0,
-                            y: f.y || 0,
-                            width: f.width || 150,
-                            height: f.height || 14,
-                            page: f.page || 1,
-                            fontName: 'default',
-                            fontSize: 11
-                        };
-                    }
-                    console.log(`[Step1] AI extracted ${aiResult.fields.length} fields (overrides regex: ${Object.keys(structure.extractedFields).length} total)`);
-                } else {
-                    this._aiExtractedFields = null;
-                    console.log('[Step1] AI field extraction returned no results, using regex fallback');
-                }
-            } else {
-                this._aiExtractedFields = null;
+            // Check Docling availability
+            if (!DoclingEngine.isAvailable && !DoclingEngine._checking) {
+                await DoclingEngine.checkConnection();
             }
 
-            // ── FALLBACK: If still 0 fields, generate DEFAULT fields by doc type ──
+            if (DoclingEngine.isAvailable) {
+                console.log('[Step1] 🔬 Using Docling for deep document analysis...');
+                const doclingResult = await DoclingEngine.parseDocument(tpl._file);
+
+                if (doclingResult && doclingResult.status !== 'error') {
+                    this._doclingResult = doclingResult;
+
+                    // Override document type from Docling if detected
+                    if (doclingResult.documentType && doclingResult.documentType !== 'Document') {
+                        structure.documentType = doclingResult.documentType;
+                    }
+
+                    // Build field schema from Docling's structured output
+                    const doclingSchema = DoclingEngine.buildFieldSchemaFromDocling(doclingResult);
+                    this._doclingFieldSchema = doclingSchema;
+
+                    if (Object.keys(doclingSchema).length > 0) {
+                        // Use Docling schema as the primary field source
+                        structure.extractedFields = {};
+                        for (const [code, field] of Object.entries(doclingSchema)) {
+                            structure.extractedFields[code] = {
+                                label: field.label,
+                                sampleValue: field.sampleValue || '',
+                                x: field.x,
+                                y: field.y,
+                                width: field.width,
+                                height: field.height,
+                                // IMPORTANT: Store label bbox separately so PDF generation
+                                // can white-box only the VALUE area, not the label
+                                labelX: field.labelX,
+                                labelY: field.labelY,
+                                labelWidth: field.labelWidth,
+                                labelHeight: field.labelHeight,
+                                page: field.page || 1,
+                                fontName: field.fontName || 'default',
+                                fontSize: field.fontSize || 10,
+                                source: 'docling'
+                            };
+                        }
+                        doclingSuccess = true;
+                        console.log(`[Step1] ✓ Docling extracted ${Object.keys(doclingSchema).length} fields with precise bboxes`);
+                    }
+                }
+            }
+
+            // ═════════════════════════════════════════════════════
+            //  PRIORITY 2: AI-Powered Field Detection (if Docling missed)
+            // ═════════════════════════════════════════════════════
+            if (!doclingSuccess) {
+                // Regex fallback first
+                this._autoDetectFieldsFromTemplate(structure);
+                console.log(`[Step1:Regex] Detected ${Object.keys(structure.extractedFields).length} fields`);
+
+                // Try AI-powered field detection
+                if (AIEngine.isAvailable) {
+                    console.log('[Step1] Attempting AI-powered field extraction...');
+                    const aiResult = await AIEngine.analyzeTemplateWithAI(structure);
+                    if (aiResult && aiResult.fields && aiResult.fields.length > 0) {
+                        this._aiExtractedFields = aiResult.fields;
+                        if (aiResult.documentType) {
+                            structure.documentType = aiResult.documentType;
+                        }
+                        for (const f of aiResult.fields) {
+                            structure.extractedFields[f.code] = {
+                                label: f.label,
+                                sampleValue: f.sampleValue || '',
+                                x: f.x || 0,
+                                y: f.y || 0,
+                                width: f.width || 150,
+                                height: f.height || 14,
+                                page: f.page || 1,
+                                fontName: 'default',
+                                fontSize: 11,
+                                source: 'ai'
+                            };
+                        }
+                        console.log(`[Step1] AI extracted ${aiResult.fields.length} fields`);
+                    } else {
+                        this._aiExtractedFields = null;
+                    }
+                } else {
+                    this._aiExtractedFields = null;
+                }
+            }
+
+            // ═════════════════════════════════════════════════════
+            //  PRIORITY 3: Default fields fallback
+            // ═════════════════════════════════════════════════════
             if (Object.keys(structure.extractedFields).length === 0) {
-                console.log(`[Step1] No fields detected by regex or AI — generating defaults for: ${structure.documentType}`);
+                console.log(`[Step1] No fields detected — generating defaults for: ${structure.documentType}`);
                 const defaultFields = this._getDefaultFieldsForDocType(structure.documentType, structure.pages[0]);
                 Object.assign(structure.extractedFields, defaultFields);
                 console.log(`[Step1:Default] Added ${Object.keys(defaultFields).length} default fields`);
             }
 
+            // ═════════════════════════════════════════════════════
+            //  If Excel data was already loaded, map Excel fields
+            //  to Docling-extracted schema for coordinate inheritance
+            // ═════════════════════════════════════════════════════
+            if (this._masterFieldSchema && this._doclingFieldSchema) {
+                const mapping = DoclingEngine.matchExcelFieldsToSchema(
+                    this._masterFieldSchema, this._doclingFieldSchema
+                );
+
+                // Transfer Docling coordinates to Excel-imported fields
+                let transferred = 0;
+                for (const [excelCode, doclingCode] of Object.entries(mapping)) {
+                    const doclingField = this._doclingFieldSchema[doclingCode];
+                    if (doclingField && this._masterFieldSchema[excelCode]) {
+                        this._masterFieldSchema[excelCode].x = doclingField.x;
+                        this._masterFieldSchema[excelCode].y = doclingField.y;
+                        this._masterFieldSchema[excelCode].width = doclingField.width;
+                        this._masterFieldSchema[excelCode].height = doclingField.height;
+                        this._masterFieldSchema[excelCode].labelX = doclingField.labelX;
+                        this._masterFieldSchema[excelCode].labelY = doclingField.labelY;
+                        this._masterFieldSchema[excelCode].labelWidth = doclingField.labelWidth;
+                        this._masterFieldSchema[excelCode].labelHeight = doclingField.labelHeight;
+                        this._masterFieldSchema[excelCode].source = 'docling_mapped';
+                        transferred++;
+                    }
+                }
+                if (transferred > 0) {
+                    console.log(`[Step1] ✓ Transferred ${transferred} Docling coordinates to Excel schema`);
+
+                    // Also update allDocInstances with the new coordinates
+                    for (const inst of Object.values(this._allDocInstances || {})) {
+                        for (const [excelCode, doclingCode] of Object.entries(mapping)) {
+                            const doclingField = this._doclingFieldSchema[doclingCode];
+                            if (doclingField && inst.fields[excelCode]) {
+                                inst.fields[excelCode].x = doclingField.x;
+                                inst.fields[excelCode].y = doclingField.y;
+                                inst.fields[excelCode].width = doclingField.width;
+                                inst.fields[excelCode].height = doclingField.height;
+                            }
+                        }
+                    }
+                }
+            }
+
             this._templateStructure = structure;
             this._maxTemplatePage = totalPages;
 
-            console.log(`[Step1] Template extracted: ${totalPages} pages, ${Object.keys(structure.extractedFields).length} fields, type: ${structure.documentType}`);
+            const source = doclingSuccess ? 'DOCLING' : (this._aiExtractedFields ? 'AI' : 'REGEX');
+            console.log(`[Step1] Template extracted: ${totalPages} pages, ${Object.keys(structure.extractedFields).length} fields, type: ${structure.documentType}, source: ${source}`);
             this.updateTemplateInfo();
         } catch (err) {
             console.error('[Step1] Template extraction error:', err);
             this._templateStructure = null;
             this._aiExtractedFields = null;
+            this._doclingResult = null;
+            this._doclingFieldSchema = null;
         }
     },
 
@@ -2856,6 +3231,16 @@ const GeneratePage = {
             }
         }
 
+        // Check Docling engine
+        {
+            const doclingOk = await DoclingEngine.checkConnection();
+            if (doclingOk) {
+                this._log(log, `✓ Docling Engine online — deep document analysis enabled`, 'success');
+            } else {
+                this._log(log, `ℹ Docling Engine offline — using regex/AI fallback for template extraction`, 'info');
+            }
+        }
+
         // ════════════════════════════════════════════════
         //  STEP 1: Extract Template Structure
         // ════════════════════════════════════════════════
@@ -2864,16 +3249,23 @@ const GeneratePage = {
 
         // Force re-extraction if AI just came online but we haven't used it yet
         const needsAIExtraction = useAI && AIEngine.isAvailable && !this._aiExtractedFields;
-        if (!this._templateStructure || needsAIExtraction) {
-            this._log(log, needsAIExtraction ? `Re-extracting with AI assistance (this may take 2-5 minutes)...` : `Extracting template structure...`, 'info');
+        const needsDoclingExtraction = DoclingEngine.isAvailable && !this._doclingResult;
+        if (!this._templateStructure || needsAIExtraction || needsDoclingExtraction) {
+            const reason = needsDoclingExtraction ? 'Docling' : (needsAIExtraction ? 'AI' : 'initial');
+            this._log(log, `Extracting template structure (${reason})...`, 'info');
             await this._extractTemplateStructure();
         }
 
         if (this._templateStructure) {
             const ts = this._templateStructure;
+            const source = this._doclingFieldSchema ? 'Docling' : (this._aiExtractedFields ? 'AI' : 'regex');
             this._log(log, `✓ Template: ${ts.totalPages} page(s), type: ${ts.documentType}`, 'success');
-            this._log(log, `✓ Detected fields: ${Object.keys(ts.extractedFields).length}${this._aiExtractedFields ? ' (AI-powered)' : ' (regex)'}`, 'success');
-            if (this._aiExtractedFields) {
+            this._log(log, `✓ Detected fields: ${Object.keys(ts.extractedFields).length} (source: ${source})`, 'success');
+            if (this._doclingFieldSchema) {
+                const fieldNames = Object.keys(this._doclingFieldSchema).slice(0, 8).join(', ');
+                const more = Object.keys(this._doclingFieldSchema).length > 8 ? ` +${Object.keys(this._doclingFieldSchema).length - 8} more` : '';
+                this._log(log, `  Docling fields: ${fieldNames}${more}`, 'msg');
+            } else if (this._aiExtractedFields) {
                 const fieldNames = this._aiExtractedFields.slice(0, 8).map(f => f.label || f.code).join(', ');
                 const more = this._aiExtractedFields.length > 8 ? ` +${this._aiExtractedFields.length - 8} more` : '';
                 this._log(log, `  Fields: ${fieldNames}${more}`, 'msg');
@@ -2910,7 +3302,13 @@ const GeneratePage = {
                     height: f.height,
                     page: f.page,
                     label: f.label,
-                    sampleValue: f.sampleValue || ''
+                    sampleValue: f.sampleValue || '',
+                    // Docling label bbox (preserved during white-boxing)
+                    labelX: f.labelX,
+                    labelY: f.labelY,
+                    labelWidth: f.labelWidth,
+                    labelHeight: f.labelHeight,
+                    source: f.source || 'regex'
                 };
             });
             this._log(log, `Using ${Object.keys(effectiveSchema).length} fields from template extraction`, 'info');
@@ -2950,7 +3348,13 @@ const GeneratePage = {
                         height: coord.height,
                         page: coord.page,
                         label: coord.label,
-                        sampleValue: coord.sampleValue || ''
+                        sampleValue: coord.sampleValue || '',
+                        // Docling label bbox (preserved during white-boxing)
+                        labelX: coord.labelX,
+                        labelY: coord.labelY,
+                        labelWidth: coord.labelWidth,
+                        labelHeight: coord.labelHeight,
+                        source: coord.source || 'unknown'
                     };
                 });
                 generationQueue.push({
@@ -3072,7 +3476,13 @@ const GeneratePage = {
                             height: fieldInfo.height,
                             page: fieldInfo.page,
                             label: fieldInfo.label || fc,
-                            rotation: 0
+                            rotation: 0,
+                            // Docling label bbox (preserved during white-boxing)
+                            labelX: fieldInfo.labelX,
+                            labelY: fieldInfo.labelY,
+                            labelWidth: fieldInfo.labelWidth,
+                            labelHeight: fieldInfo.labelHeight,
+                            source: fieldInfo.source || 'unknown'
                         }];
                     });
 
@@ -3458,9 +3868,9 @@ const ExportPage = {
                 
                 const allPages = outPdf.getPages();
                 
-                // ── STEP 1: WHITE-BOX over old field values ──
-                // For each field's coordinate, draw a white rectangle to cover the original content
-                // This ensures old template values are replaced, not overlaid
+                // ── STEP 1: WHITE-BOX over old field VALUES (NOT labels) ──
+                // With Docling, we know exactly where the VALUE is vs the LABEL.
+                // Only white-box the VALUE bounding box to preserve original labels.
                 Object.keys(doc.data || {}).forEach(field => {
                      const metas = doc.meta && doc.meta[field];
                      if (!metas || !Array.isArray(metas)) return;
@@ -3478,7 +3888,8 @@ const ExportPage = {
                                    const h = meta.height || 16;
                                    const pdfY = pageH - meta.y - h;
                                    
-                                   // White-box: cover old content completely
+                                   // White-box: cover ONLY the value content area
+                                   // The label area (if known from Docling) is preserved
                                    page.drawRectangle({
                                        x: meta.x - 1,
                                        y: pdfY - 1,
@@ -3515,23 +3926,55 @@ const ExportPage = {
                                    let fontSize = Math.min(h * 0.7, 11);
                                    if (fontSize < 6) fontSize = 6;
                                    
-                                   // Truncate text to fit width
+                                   // Auto-fit text to bounding box
                                    let displayText = textValue;
                                    try {
                                        const textWidth = font.widthOfTextAtSize(displayText, fontSize);
                                        if (textWidth > w - 4) {
-                                           // Reduce font size or truncate
                                            const ratio = (w - 4) / textWidth;
                                            if (ratio > 0.6) {
                                                fontSize = Math.max(6, fontSize * ratio);
                                            } else {
+                                               // Try wrapping to multi-line if text is long
                                                const maxChars = Math.floor(displayText.length * ratio);
+                                               if (maxChars > 10 && h > 20) {
+                                                   // Multi-line: break at space
+                                                   const breakPoint = displayText.lastIndexOf(' ', maxChars);
+                                                   if (breakPoint > 5) {
+                                                       const line1 = displayText.substring(0, breakPoint);
+                                                       const line2 = displayText.substring(breakPoint + 1);
+                                                       const lineH = fontSize + 2;
+                                                       
+                                                       page.drawText(line1, {
+                                                           x: meta.x + 2,
+                                                           y: pdfY + h - fontSize - 1,
+                                                           font, size: fontSize,
+                                                           color: rgb(0.05, 0.05, 0.15)
+                                                       });
+                                                       
+                                                       let line2Display = line2;
+                                                       try {
+                                                           if (font.widthOfTextAtSize(line2, fontSize) > w - 4) {
+                                                               const r2 = (w - 4) / font.widthOfTextAtSize(line2, fontSize);
+                                                               line2Display = line2.substring(0, Math.max(1, Math.floor(line2.length * r2) - 1)) + '…';
+                                                           }
+                                                       } catch(e) {}
+                                                       
+                                                       page.drawText(line2Display, {
+                                                           x: meta.x + 2,
+                                                           y: pdfY + h - fontSize - lineH - 1,
+                                                           font, size: fontSize,
+                                                           color: rgb(0.05, 0.05, 0.15)
+                                                       });
+                                                       return; // Skip single-line draw
+                                                   }
+                                               }
                                                displayText = displayText.substring(0, Math.max(1, maxChars - 1)) + '…';
                                            }
                                        }
                                    } catch(e) { /* ignore font measurement errors */ }
                                    
-                                   // Draw the new value text
+                                   // Draw the new value text (single line)
                                    page.drawText(displayText, {
                                        x: meta.x + 2,
                                        y: pdfY + (h - fontSize) / 2 + 1,
@@ -3544,7 +3987,7 @@ const ExportPage = {
                      });
                 });
 
-                // ── STEP 3: Draw OCR LABEL overlays (colored tags above fields) ──
+                // ── STEP 3: Draw OCR LABEL overlays (colored tags above value fields) ──
                 const labelColors = [
                     [0.22, 0.56, 0.87],  // Blue
                     [0.16, 0.71, 0.37],  // Green
@@ -3571,30 +4014,34 @@ const ExportPage = {
                          const w = meta.width || 80;
                          const h = meta.height || 16;
                          const pdfY = pageH - meta.y - h;
-                         // Colored border around field value
+
+                         // Colored border around the VALUE field (subtle)
                          page.drawRectangle({
                              x: meta.x - 1, y: pdfY - 1,
                              width: w + 2, height: h + 2,
                              borderColor: rgb(lc[0], lc[1], lc[2]),
-                             borderWidth: 0.8, opacity: 0.6
+                             borderWidth: 0.5, opacity: 0.4
                          });
-                         // Label tag above field
+
+                         // Label tag above the value field
                          const labelText = (meta.label || field).substring(0, 30);
-                         const labelFontSize = 6;
+                         const labelFontSize = 5.5;
                          let labelW;
                          try { labelW = font.widthOfTextAtSize(labelText, labelFontSize) + 6; } catch(e) { labelW = 40; }
                          labelW = Math.max(labelW, 20);
-                         const labelH = 9;
-                         // Label background
+                         const labelH = 8;
+
+                         // Label background (with rounded feel via smaller opacity)
                          page.drawRectangle({
                              x: meta.x - 1, y: pdfY + h + 1,
                              width: labelW, height: labelH,
-                             color: rgb(lc[0], lc[1], lc[2]), borderWidth: 0
+                             color: rgb(lc[0], lc[1], lc[2]), borderWidth: 0,
+                             opacity: 0.85
                          });
-                         // Label text (white)
+                         // Label text (white on colored bg)
                          try {
                              page.drawText(labelText, {
-                                 x: meta.x + 2, y: pdfY + h + 3,
+                                 x: meta.x + 2, y: pdfY + h + 2.5,
                                  font, size: labelFontSize, color: rgb(1, 1, 1)
                              });
                          } catch(e) {}
