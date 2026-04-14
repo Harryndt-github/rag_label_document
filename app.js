@@ -2292,10 +2292,19 @@ const GeneratePage = {
         // Template select change → extract template
         const sourceSelect = document.getElementById('gen-source-select');
         if (sourceSelect) {
-            sourceSelect.addEventListener('change', () => {
+            sourceSelect.addEventListener('change', async () => {
                 this.updateTemplateInfo();
-                this._extractTemplateStructure();
+                await this._extractTemplateStructure();
+                if (this._masterFieldSchema) {
+                    this._assignCoordinatesFromTemplate();
+                }
             });
+        }
+
+        // Manual mapping button
+        const openMapperBtn = document.getElementById('gen-open-mapper-btn');
+        if (openMapperBtn) {
+            openMapperBtn.addEventListener('click', () => this._showVisualMapper());
         }
     },
 
@@ -2794,7 +2803,9 @@ const GeneratePage = {
             return;
         }
 
+        // Show AFTER alert check but BEFORE canvas measuring
         mapperWrap.style.display = 'block';
+        mapperWrap.scrollIntoView({ behavior: 'smooth' });
 
         const canvas = document.getElementById('mapper-pdf-canvas');
         const ctx = canvas.getContext('2d');
@@ -2839,7 +2850,15 @@ const GeneratePage = {
         const saveBtn = document.getElementById('gen-save-mapping-btn');
         saveBtn.onclick = () => this._saveVisualMapping(pdfScale);
 
-        Object.entries(schema).forEach(([fieldCode, info]) => {
+        // Performance Optimization: If we have hundreds of fields, only show the first 50 initially
+        // or stagger them to avoid blocking the UI thread.
+        const entries = Object.entries(schema);
+        const limit = 100; // Sensible limit for dragging at once
+        if (entries.length > limit) {
+            console.warn(`[VisualMapper] ${entries.length} fields detected. Limiting to first ${limit} for performance.`);
+        }
+
+        entries.slice(0, limit).forEach(([fieldCode, info]) => {
             if (info.page > 1) return;
             
             const div = document.createElement('div');
