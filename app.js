@@ -3800,18 +3800,48 @@ const GeneratePage = {
         }
 
         if (useExcelData) {
-            // Respect the requested count limit
-            const finalKeys = filteredKeys.slice(0, requestedCount);
-            
-            finalKeys.forEach(key => {
+            // Take all available matching rows first
+            filteredKeys.forEach(key => {
                 const inst = allDocInstances[key];
                 generationQueue.push({
                     caseId: inst.caseId,
                     docInstance: inst.docInstance,
-                    fields: inst.fields
+                    fields: inst.fields,
+                    isRealData: true
                 });
             });
-            this._log(log, `✓ Queue ready: ${generationQueue.length} document(s) (of ${filteredKeys.length} matching rows)`, 'success');
+
+            // DATA AUGMENTATION: If user wants more than what's in Excel, synthesize clones
+            const realCount = generationQueue.length;
+            if (realCount > 0 && realCount < requestedCount) {
+                const diff = requestedCount - realCount;
+                this._log(log, `ℹ Augmenting data: Clonation ${diff} additional synthetic documents based on Excel pattern...`, 'info');
+                
+                // Use the first matching row as a blueprint for field names and coordinates
+                const blueprint = generationQueue[0];
+                for (let i = 0; i < diff; i++) {
+                    const synthFields = {};
+                    Object.entries(blueprint.fields).forEach(([fc, info]) => {
+                        synthFields[fc] = {
+                            ...info,
+                            value: DocumentStore.generateRandomValue(fc), // Generate realistic random value
+                            isSynthetic: true
+                        };
+                    });
+
+                    generationQueue.push({
+                        caseId: `AUG_${String(i + 1).padStart(4, '0')}_${blueprint.caseId}`,
+                        docInstance: blueprint.docInstance + ` (Synth ${i + 1})`,
+                        fields: synthFields,
+                        isSynthetic: true
+                    });
+                }
+            }
+
+            // Finally, respect the absolute requested count limit
+            generationQueue = generationQueue.slice(0, requestedCount);
+            
+            this._log(log, `✓ Queue ready: ${generationQueue.length} document(s) (${realCount} real, ${generationQueue.length - realCount} synthetic)`, 'success');
             
             if (generationQueue.length === 0 && filteredKeys.length > 0) {
                 this._log(log, `⚠ No matching rows found for the current filter.`, 'warning');
@@ -3948,6 +3978,13 @@ const GeneratePage = {
             Object.keys(item.fields).forEach(fc => {
                 if (!item.fields[fc].value) {
                     item.fields[fc].value = DocumentStore.generateRandomValue(fc);
+                } else if (!isNaN(item.fields[fc].value) && (fc.toLowerCase().includes('ngay') || fc.toLowerCase().includes('date'))) {
+                    // Fix Excel serial dates (e.g. 45960)
+                    const serial = parseFloat(item.fields[fc].value);
+                    if (serial > 40000 && serial < 60000) {
+                        const date = new Date((serial - 25569) * 86400 * 1000);
+                        item.fields[fc].value = date.toISOString().split('T')[0];
+                    }
                 }
             });
         }
