@@ -2777,6 +2777,173 @@ const GeneratePage = {
         console.log(`[CoordAssign] Matched ${matched} fields to template positions, auto-laid out ${unmatchedFields.length} remaining fields`);
     },
 
+    async _showVisualMapper() {
+        const schema = this._masterFieldSchema;
+        const select = document.getElementById('gen-source-select');
+        const tpl = DocumentStore.uploadedTemplates.find(t => t.id === select.value);
+
+        const mapperWrap = document.getElementById('gen-visual-mapper');
+        if (!schema || Object.keys(schema).length === 0 || !tpl || !tpl._file) {
+            if (mapperWrap) mapperWrap.style.display = 'none';
+            return;
+        }
+
+        mapperWrap.style.display = 'block';
+
+        const canvas = document.getElementById('mapper-pdf-canvas');
+        const ctx = canvas.getContext('2d');
+        const file = tpl._file;
+
+        let pdfScale = 1.0; 
+
+        // Render document
+        const mimeType = (file.type || '').toLowerCase();
+        if (mimeType.includes('image')) {
+            const img = new Image();
+            img.src = URL.createObjectURL(file);
+            await new Promise(res => img.onload = res);
+            
+            const maxWidth = document.querySelector('.mapper-canvas-container').clientWidth - 40;
+            pdfScale = Math.min(1, maxWidth / img.width);
+            
+            canvas.width = img.width * pdfScale;
+            canvas.height = img.height * pdfScale;
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        } else {
+            // Assume PDF
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            const page = await pdf.getPage(1); 
+            
+            const viewportRaw = page.getViewport({ scale: 1 });
+            const maxWidth = document.querySelector('.mapper-canvas-container').clientWidth - 40;
+            pdfScale = Math.min(1.5, maxWidth / viewportRaw.width);
+
+            const viewport = page.getViewport({ scale: pdfScale });
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            
+            await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+        }
+
+        // Generate draggable tags
+        const overlay = document.getElementById('mapper-overlay');
+        overlay.innerHTML = ''; 
+
+        const saveBtn = document.getElementById('gen-save-mapping-btn');
+        saveBtn.onclick = () => this._saveVisualMapping(pdfScale);
+
+        Object.entries(schema).forEach(([fieldCode, info]) => {
+            if (info.page > 1) return;
+            
+            const div = document.createElement('div');
+            div.className = 'mapper-tag';
+            
+            const w = (info.width || 120) * pdfScale;
+            const h = (info.height || 24) * pdfScale;
+            
+            let x = (info.x || 10) * pdfScale;
+            let y = (info.y || 10) * pdfScale;
+            
+            div.style.position = 'absolute';
+            div.style.left = `${x}px`;
+            div.style.top = `${y}px`;
+            div.style.width = `${Math.max(w, 80)}px`;
+            div.style.height = `${Math.max(h, 20)}px`;
+            div.style.background = 'rgba(76, 175, 80, 0.4)';
+            div.style.border = '2px solid #4CAF50';
+            div.style.borderRadius = '3px';
+            div.style.cursor = 'move';
+            div.style.display = 'flex';
+            div.style.alignItems = 'center';
+            div.style.justifyContent = 'center';
+            div.style.fontSize = '11px';
+            div.style.fontWeight = 'bold';
+            div.style.color = '#111';
+            div.style.textShadow = '0 0 2px white';
+            div.innerText = info.label || fieldCode;
+            div.dataset.field = fieldCode;
+
+            let isDragging = false;
+            let startX, startY, origX, origY;
+
+            div.onmousedown = (e) => {
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                origX = div.offsetLeft;
+                origY = div.offsetTop;
+                div.style.opacity = '0.8';
+                div.style.zIndex = '100';
+            };
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                
+                // Keep inside bounds
+                let newX = origX + dx;
+                let newY = origY + dy;
+                newX = Math.max(0, Math.min(newX, canvas.width - parseFloat(div.style.width)));
+                newY = Math.max(0, Math.min(newY, canvas.height - parseFloat(div.style.height)));
+                
+                div.style.left = `${newX}px`;
+                div.style.top = `${newY}px`;
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isDragging) {
+                    isDragging = false;
+                    div.style.opacity = '1';
+                    div.style.zIndex = '1';
+                }
+            });
+
+            overlay.appendChild(div);
+        });
+    },
+
+    _saveVisualMapping(pdfScale) {
+        if (!this._masterFieldSchema) return;
+        
+        const overlay = document.getElementById('mapper-overlay');
+        const tags = overlay.querySelectorAll('.mapper-tag');
+        
+        tags.forEach(tag => {
+            const fieldCode = tag.dataset.field;
+            if (this._masterFieldSchema[fieldCode]) {
+                const xCanvas = parseFloat(tag.style.left);
+                const yCanvas = parseFloat(tag.style.top);
+                const wCanvas = parseFloat(tag.style.width);
+                const hCanvas = parseFloat(tag.style.height);
+
+                const x = xCanvas / pdfScale;
+                const y = yCanvas / pdfScale;
+                const width = wCanvas / pdfScale;
+                const height = hCanvas / pdfScale;
+
+                this._masterFieldSchema[fieldCode] = {
+                    ...this._masterFieldSchema[fieldCode],
+                    x, y, width, height, hasCoordinates: true
+                };
+
+                if (this._allDocInstances) {
+                    Object.values(this._allDocInstances).forEach(inst => {
+                        if (inst.fields[fieldCode]) {
+                            inst.fields[fieldCode].x = x;
+                            inst.fields[fieldCode].y = y;
+                            inst.fields[fieldCode].width = width;
+                            inst.fields[fieldCode].height = height;
+                        }
+                    });
+                }
+            }
+        });
+
+        alert("Template mapping saved! You can now generate documents.");
+    },
+
     _masterFieldSchema: null,
     _allDocInstances: null,
     _maxTemplatePage: 1,
