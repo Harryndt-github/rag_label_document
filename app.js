@@ -2497,8 +2497,8 @@ const GeneratePage = {
     // Auto-detect label:value pairs from template text positions (smart fallback)
     // This is the critical fallback when AI is offline
     _autoDetectFieldsFromTemplate(structure) {
-        // Patterns: each pattern matches LABEL text. The VALUE is expected to follow.
         const labelPatterns = [
+            // English patterns
             { pattern: /^NO[.:\s#]*$/i, code: 'SO_CHUNG_TU', label: 'Document Number' },
             { pattern: /\bNO[:.\s]/i, code: 'SO_CHUNG_TU', label: 'Document Number' },
             { pattern: /\bDATE[:\s]/i, code: 'NGAY', label: 'Date' },
@@ -2536,12 +2536,30 @@ const GeneratePage = {
             { pattern: /\bMODEL/i, code: 'MA_HANG', label: 'Model' },
             { pattern: /\bBRAND/i, code: 'THUONG_HIEU', label: 'Brand' },
             { pattern: /\bORIGIN/i, code: 'XUAT_XU', label: 'Origin' },
+            
+            // Vietnamese patterns
+            { pattern: /S[ỐO]\s*(?:HÓA\s*ĐƠN|HOA\s*DON|CHỨNG\s*TỪ|CHUNG\s*TU)[:\s]/i, code: 'SO_CHUNG_TU', label: 'Số Chứng Từ' },
+            { pattern: /S[ỐO][:.\s]/i, code: 'SO_CHUNG_TU', label: 'Số Chứng Từ' },
+            { pattern: /NGÀY|NGAY[:\s]/i, code: 'NGAY', label: 'Ngày' },
+            { pattern: /NG[ƯƯỜ]*I\s*MUA[:\s]/i, code: 'TEN_NGUOI_MUA', label: 'Người Mua' },
+            { pattern: /NG[ƯƯỜ]*I\s*BÁN|NGUOI\s*BAN[:\s]/i, code: 'TEN_NGUOI_BAN', label: 'Người Bán' },
+            { pattern: /Đ[ỊI]A\s*CH[ỈI][:\s]/i, code: 'DIA_CHI', label: 'Địa Chỉ' },
+            { pattern: /S[ỐO]\s*L[ƯƯỢ]*NG[:\s]/i, code: 'SO_LUONG', label: 'Số Lượng' },
+            { pattern: /Đ[ƠO]N\s*GIÁ|DON\s*GIA[:\s]/i, code: 'DON_GIA', label: 'Đơn Giá' },
+            { pattern: /TỔNG\s*(?:TIỀN|CONG)|TONG\s*(?:TIEN|CONG)[:\s]/i, code: 'TONG_TIEN', label: 'Tổng Tiền' },
+            { pattern: /HÀNG\s*HÓA|HANG\s*HOA|MÔ\s*TẢ|MO\s*TA[:\s]/i, code: 'MO_TA_HANG', label: 'Mô Tả Hàng Hóa' }
         ];
 
         for (const page of structure.pages) {
             // ----- Step A: Reconstruct text LINES from fragmented PDF items -----
             // PDF text items are often fragmented. Group items on same Y-level into lines.
-            const items = page.items.slice().sort((a, b) => a.y - b.y || a.x - b.x);
+            const items = page.items.slice().sort((a, b) => {
+                // If items are roughly on the same vertical line (within 10-15px), sort them horizontally.
+                if (Math.abs(a.y - b.y) <= 12) {
+                    return a.x - b.x;
+                }
+                return a.y - b.y;
+            });
             const lines = [];
             let currentLine = null;
 
@@ -2584,9 +2602,12 @@ const GeneratePage = {
 
                     if (cleanValue.length > 0) {
                         // Find the physical position of the value text items
-                        // Take items that are to the RIGHT of the label match region
-                        const labelEndX = line.items[0].x + (match.index + match[0].length) * 5; // Approx
-                        const valueItems = line.items.filter(it => it.x > line.items[0].x + 20);
+                        // Take items that are to the RIGHT of the label
+                        const labelCharCount = match.index + match[0].length;
+                        const labelEndX = line.items[0].x + (labelCharCount * 6); // Approx 6px per char
+                        
+                        // Filter items that start after the label (with a small fuzz factor)
+                        const valueItems = line.items.filter(it => it.x >= labelEndX - 15);
                         const valueItem = valueItems.length > 0 ? valueItems[0] : line.items[line.items.length - 1];
                         const lastValueItem = valueItems.length > 0 ? valueItems[valueItems.length - 1] : valueItem;
 
@@ -2595,7 +2616,7 @@ const GeneratePage = {
                             sampleValue: cleanValue.substring(0, 200), // Limit value length
                             x: valueItem.x,
                             y: line.y,
-                            width: Math.max(lastValueItem.x + (lastValueItem.width || 80) - valueItem.x, 120),
+                            width: Math.max(lastValueItem.x + (lastValueItem.width || 80) - valueItem.x, Math.min(150, cleanValue.length * 7)),
                             height: line.height || 14,
                             page: page.pageNumber,
                             fontName: valueItem.fontName || 'default',
@@ -2641,6 +2662,9 @@ const GeneratePage = {
                     { rx: /\bBUYER[.:]?\s*[:]\s*(.+)/i, code: 'TEN_NGUOI_MUA', label: 'Buyer' },
                     { rx: /\bSELLER[.:]?\s*[:]\s*(.+)/i, code: 'TEN_NGUOI_BAN', label: 'Seller' },
                     { rx: /\bTOTAL[.:]?\s*[:]\s*(.+)/i, code: 'TONG_TIEN', label: 'Total Amount' },
+                    { rx: /S[ỐO][.:]?\s*[:]\s*(.+)/i, code: 'SO_CHUNG_TU', label: 'Số Chứng Từ' },
+                    { rx: /NGÀY|NGAY[.:]?\s*[:]\s*(.+)/i, code: 'NGAY', label: 'Ngày' },
+                    { rx: /Đ[ƠO]N\s*GIÁ|DON\s*GIA[.:]?\s*[:]\s*(.+)/i, code: 'DON_GIA', label: 'Đơn Giá' }
                 ];
                 for (const ip of inlinePatterns) {
                     if (structure.extractedFields[ip.code]) continue;
@@ -2649,12 +2673,17 @@ const GeneratePage = {
                         const val = m[1].trim();
                         const firstItem = line.items[0];
                         const lastItem = line.items[line.items.length - 1];
+                        
+                        const fullMatchText = m[0];
+                        const labelText = fullMatchText.substring(0, fullMatchText.lastIndexOf(val));
+                        const approxLabelWidth = labelText.length * 6;
+                        
                         structure.extractedFields[ip.code] = {
                             label: ip.label,
                             sampleValue: val,
-                            x: firstItem.x + (line.maxX - firstItem.x) * 0.4, // Value starts ~40% across
+                            x: firstItem.x + approxLabelWidth,
                             y: line.y,
-                            width: Math.max(line.maxX - firstItem.x, 120) * 0.6,
+                            width: Math.max(line.maxX - (firstItem.x + approxLabelWidth), Math.min(150, val.length * 7)),
                             height: line.height || 14,
                             page: page.pageNumber,
                             fontName: firstItem.fontName || 'default',
