@@ -291,6 +291,28 @@ const DocumentStore = {
         if (fc.includes('unit'))
             return rndStr(packingTypes);
 
+        // Additional field codes from smart detector
+        if (fc.includes('nguoi_thu_huong') || fc.includes('beneficiary'))
+            return rndStr(companyNames);
+        if (fc.includes('giao_hang_tung_phan') || fc.includes('partial'))
+            return rndStr(['Allowed', 'Not Allowed']);
+        if (fc.includes('chuyen_tai') || fc.includes('transshipment'))
+            return rndStr(['Allowed', 'Not Allowed']);
+        if (fc.includes('ky_ma_hieu') || fc.includes('marking'))
+            return rndStr(['Export standard packing', 'As per contract', 'Neutral marking', 'Brand label']);
+        if (fc.includes('bao_hiem') || fc.includes('insurance'))
+            return rndStr(['By Buyer', 'By Seller', 'CIF terms', '110% invoice value']);
+        if (fc.includes('ma_hang') || fc.includes('model'))
+            return `${rndStr(['IMSKR','MFG','MDL','SKU'])}${rndInt(1000,9999)}-${rndStr(['L2','H1','A3','B5'])}`;
+        if (fc.includes('thuong_hieu') || fc.includes('brand'))
+            return rndStr(['IMS', 'Samsung', 'LG', 'Sony', 'Panasonic', 'Mitsubishi', 'Bosch']);
+        if (fc.includes('dien_thoai') || fc.includes('phone') || fc.includes('tel'))
+            return `0${rndInt(2,9)}${rndInt(0,9)}${rndInt(0,9)}-${rndInt(100,999)}-${rndInt(1000,9999)}`;
+        if (fc.includes('fax'))
+            return `0${rndInt(2,9)}${rndInt(0,9)}${rndInt(0,9)}-${rndInt(100,999)}-${rndInt(1000,9999)}`;
+        if (fc.includes('so_chung_tu') || fc.includes('document_number') || fc.includes('doc_no'))
+            return `${rndStr(['MY-TL','SC','HD'])}${rndInt(100000,999999)}`;
+
         // ═══════════════════════════════════════════════════
         //  Absolute fallback — use cleaned field name
         // ═══════════════════════════════════════════════════
@@ -2341,6 +2363,14 @@ const GeneratePage = {
                 this._aiExtractedFields = null;
             }
 
+            // ── FALLBACK: If still 0 fields, generate DEFAULT fields by doc type ──
+            if (Object.keys(structure.extractedFields).length === 0) {
+                console.log(`[Step1] No fields detected by regex or AI — generating defaults for: ${structure.documentType}`);
+                const defaultFields = this._getDefaultFieldsForDocType(structure.documentType, structure.pages[0]);
+                Object.assign(structure.extractedFields, defaultFields);
+                console.log(`[Step1:Default] Added ${Object.keys(defaultFields).length} default fields`);
+            }
+
             this._templateStructure = structure;
             this._maxTemplatePage = totalPages;
 
@@ -2370,52 +2400,270 @@ const GeneratePage = {
         return 'Document';
     },
 
-    // Auto-detect label:value pairs from template text positions (regex fallback)
+    // Generate default field positions based on document type when detection fails
+    _getDefaultFieldsForDocType(docType, firstPage) {
+        const pw = firstPage?.width || 595;
+        const ph = firstPage?.height || 842;
+        const items = firstPage?.items || [];
+
+        // Try to anchor fields to actual text positions in the PDF
+        const findItemY = (keywords) => {
+            for (const item of items) {
+                const t = item.text.toLowerCase();
+                for (const kw of keywords) {
+                    if (t.includes(kw.toLowerCase())) {
+                        return { x: item.x + (item.width || 50) + 5, y: item.y, w: Math.max(pw * 0.4, 200) };
+                    }
+                }
+            }
+            return null;
+        };
+
+        const makeField = (label, sampleValue, x, y, width) => ({
+            label, sampleValue,
+            x: x || pw * 0.45, y: y || 50, width: width || 200,
+            height: 14, page: 1, fontName: 'default', fontSize: 10
+        });
+
+        const fields = {};
+
+        // --- Common fields for ALL trade documents ---
+        const docNoPos = findItemY(['NO', 'No.', 'Number']);
+        fields['SO_CHUNG_TU'] = makeField('Document Number', 'SC-MY250001',
+            docNoPos?.x || pw * 0.6, docNoPos?.y || 55, 180);
+
+        const datePos = findItemY(['DATE', 'Date', 'Dated']);
+        fields['NGAY'] = makeField('Date', '22/09/2025',
+            datePos?.x || pw * 0.6, datePos?.y || 75, 120);
+
+        const buyerPos = findItemY(['BUYER', 'Buyer']);
+        fields['TEN_NGUOI_MUA'] = makeField('Buyer', 'THIEN LOC VIET NAM IMPORT EXPORT CO.,LTD',
+            buyerPos?.x || 80, buyerPos?.y || 100, pw * 0.7);
+
+        const sellerPos = findItemY(['SELLER', 'Seller']);
+        fields['TEN_NGUOI_BAN'] = makeField('Seller', 'NINGBO MING YUE GLOBAL TRADING CO., LTD',
+            sellerPos?.x || 80, sellerPos?.y || 140, pw * 0.7);
+
+        // --- Type-specific fields ---
+        if (['Sales Contract', 'Contract', 'Purchase Order'].includes(docType)) {
+            const goodsPos = findItemY(['Goods', 'Description', 'Commodity']);
+            fields['MO_TA_HANG'] = makeField('Goods', 'Shoe manufacturing machines, Model: IMSKR9506-L2',
+                goodsPos?.x || 100, goodsPos?.y || 260, pw * 0.5);
+            fields['SO_LUONG'] = makeField('Quantity', '2',
+                (goodsPos?.x || pw * 0.6) + 200, goodsPos?.y || 260, 60);
+            fields['DON_GIA'] = makeField('Unit Price', '75,000',
+                (goodsPos?.x || pw * 0.7) + 260, goodsPos?.y || 260, 80);
+
+            const totalPos = findItemY(['TOTAL', 'Total', 'Amount']);
+            fields['TONG_TIEN'] = makeField('Total Amount', '150,000',
+                totalPos?.x || pw * 0.7, totalPos?.y || 300, 100);
+
+            const paymentPos = findItemY(['PAYMENT', 'Payment']);
+            fields['PHUONG_THUC_THANH_TOAN'] = makeField('Payment', 'T/T IN ADVANCE',
+                paymentPos?.x || 200, paymentPos?.y || 420, pw * 0.4);
+
+            const shipPos = findItemY(['SHIPMENT', 'Shipment']);
+            fields['THOI_HAN_GIAO'] = makeField('Shipment', 'Not later than December 2025',
+                shipPos?.x || 200, shipPos?.y || 450, pw * 0.4);
+
+            const portLoadPos = findItemY(['Loading port', 'LOADING']);
+            fields['CANG_XUAT'] = makeField('Loading Port', 'NINGBO, CHINA',
+                portLoadPos?.x || 250, portLoadPos?.y || 480, 180);
+
+            const portDisPos = findItemY(['Discharge', 'DESTINATION']);
+            fields['CANG_NHAP'] = makeField('Discharge Port', 'HO CHI MINH, VIETNAM',
+                portDisPos?.x || 250, portDisPos?.y || 500, 180);
+        }
+
+        if (['Invoice', 'Commercial Invoice', 'Proforma Invoice'].includes(docType)) {
+            fields['MO_TA_HANG'] = makeField('Goods', 'Electronic components', 100, 250, pw * 0.5);
+            fields['SO_LUONG'] = makeField('Quantity', '500', pw * 0.6, 250, 60);
+            fields['DON_GIA'] = makeField('Unit Price', '25.00', pw * 0.7, 250, 80);
+            fields['TONG_TIEN'] = makeField('Total', '12,500.00', pw * 0.7, 290, 100);
+        }
+
+        if (docType === 'Bill of Lading') {
+            fields['TAU'] = makeField('Vessel', 'MV OCEAN STAR', 200, 150, 200);
+            fields['CANG_XUAT'] = makeField('Loading Port', 'NINGBO, CHINA', 200, 200, 200);
+            fields['CANG_NHAP'] = makeField('Discharge Port', 'CAT LAI, HCM', 200, 230, 200);
+            fields['SO_CONTAINER'] = makeField('Container No.', 'MSCU1234567', 200, 260, 150);
+        }
+
+        return fields;
+    },
+
+    // Auto-detect label:value pairs from template text positions (smart fallback)
+    // This is the critical fallback when AI is offline
     _autoDetectFieldsFromTemplate(structure) {
+        // Patterns: each pattern matches LABEL text. The VALUE is expected to follow.
         const labelPatterns = [
-            { pattern: /(?:NO|No|NUMBER|Number)[.:;#\s]*/i, code: 'SO_CHUNG_TU', label: 'Document Number' },
-            { pattern: /(?:DATE|Date|Dated)[.:;\s]*/i, code: 'NGAY', label: 'Date' },
-            { pattern: /BUYER[:\s]*/i, code: 'TEN_NGUOI_MUA', label: 'Buyer' },
-            { pattern: /SELLER[:\s]*/i, code: 'TEN_NGUOI_BAN', label: 'Seller' },
-            { pattern: /(?:COMMODITY|GOODS|DESCRIPTION)[:\s]*/i, code: 'MO_TA_HANG', label: 'Goods Description' },
-            { pattern: /(?:QUANTITY|QTY)[:\s]*/i, code: 'SO_LUONG', label: 'Quantity' },
-            { pattern: /(?:UNIT PRICE|UNIT_PRICE|PRICE)[:\s]*/i, code: 'DON_GIA', label: 'Unit Price' },
-            { pattern: /(?:TOTAL|AMOUNT|VALUE)[:\s]*/i, code: 'TONG_TIEN', label: 'Total Amount' },
-            { pattern: /(?:PAYMENT|PAYMENT TERMS)[:\s]*/i, code: 'PHUONG_THUC_THANH_TOAN', label: 'Payment Terms' },
-            { pattern: /(?:SHIPMENT|DELIVERY)[:\s]*/i, code: 'THOI_HAN_GIAO', label: 'Shipment Terms' },
-            { pattern: /(?:PORT OF LOADING|LOADING PORT)[:\s]*/i, code: 'CANG_XUAT', label: 'Port of Loading' },
-            { pattern: /(?:PORT OF DISCHARGE|DESTINATION)[:\s]*/i, code: 'CANG_NHAP', label: 'Port of Discharge' },
+            { pattern: /^NO[.:\s#]*$/i, code: 'SO_CHUNG_TU', label: 'Document Number' },
+            { pattern: /\bNO[:.\s]/i, code: 'SO_CHUNG_TU', label: 'Document Number' },
+            { pattern: /\bDATE[:\s]/i, code: 'NGAY', label: 'Date' },
+            { pattern: /\bDATED[:\s]/i, code: 'NGAY', label: 'Date' },
+            { pattern: /\bBUYER[:\s]/i, code: 'TEN_NGUOI_MUA', label: 'Buyer Name' },
+            { pattern: /\bSELLER[:\s]/i, code: 'TEN_NGUOI_BAN', label: 'Seller Name' },
+            { pattern: /\bCOMMODITY/i, code: 'MO_TA_HANG', label: 'Goods Description' },
+            { pattern: /\bGOODS\s*DESCRIPTION/i, code: 'MO_TA_HANG', label: 'Goods Description' },
+            { pattern: /\bQUANTITY[:\s]/i, code: 'SO_LUONG', label: 'Quantity' },
+            { pattern: /\bQTY[:\s]/i, code: 'SO_LUONG', label: 'Quantity' },
+            { pattern: /\bUNIT\s*PRICE[:\s]/i, code: 'DON_GIA', label: 'Unit Price' },
+            { pattern: /\bPRICE[:\s]/i, code: 'DON_GIA', label: 'Unit Price' },
+            { pattern: /\bTOTAL[:\s]/i, code: 'TONG_TIEN', label: 'Total Amount' },
+            { pattern: /\bAMOUNT[:\s]/i, code: 'TONG_TIEN', label: 'Total Amount' },
+            { pattern: /\bPAYMENT\s*TERMS/i, code: 'PHUONG_THUC_THANH_TOAN', label: 'Payment Terms' },
+            { pattern: /\bSHIPMENT/i, code: 'THOI_HAN_GIAO', label: 'Shipment Terms' },
+            { pattern: /\bDELIVERY/i, code: 'THOI_HAN_GIAO', label: 'Delivery Terms' },
+            { pattern: /\bPORT\s*OF\s*LOADING/i, code: 'CANG_XUAT', label: 'Port of Loading' },
+            { pattern: /\bLOADING\s*PORT/i, code: 'CANG_XUAT', label: 'Loading Port' },
+            { pattern: /\bPORT\s*OF\s*(DISCHARGE|DESTINATION)/i, code: 'CANG_NHAP', label: 'Port of Discharge' },
+            { pattern: /\bDESTINATION\s*PORT/i, code: 'CANG_NHAP', label: 'Destination Port' },
+            { pattern: /\bADDRESS[:\s]/i, code: 'DIA_CHI', label: 'Address' },
+            { pattern: /\bTEL[:\s]/i, code: 'DIEN_THOAI', label: 'Telephone' },
+            { pattern: /\bPHONE[:\s]/i, code: 'DIEN_THOAI', label: 'Phone' },
+            { pattern: /\bFAX[:\s]/i, code: 'FAX', label: 'Fax' },
+            { pattern: /\bSWIFT\s*(?:CODE)?[:\s]/i, code: 'SWIFT_CODE', label: 'SWIFT Code' },
+            { pattern: /\bACCOUNT\s*(?:NUMBER|NO)?[:\s]/i, code: 'SO_TAI_KHOAN', label: 'Account Number' },
+            { pattern: /\bBANK\s*(?:NAME)?[:\s]/i, code: 'NGAN_HANG', label: 'Bank' },
+            { pattern: /\bBENEFICIARY[:\s]/i, code: 'NGUOI_THU_HUONG', label: 'Beneficiary' },
+            { pattern: /\bPARTIAL\s*SHIPMENT/i, code: 'GIAO_HANG_TUNG_PHAN', label: 'Partial Shipment' },
+            { pattern: /\bTRANSHIPMENT/i, code: 'CHUYEN_TAI', label: 'Transshipment' },
+            { pattern: /\bPACKING/i, code: 'DONG_GOI', label: 'Packing' },
+            { pattern: /\bMARKING/i, code: 'KY_MA_HIEU', label: 'Marking' },
+            { pattern: /\bINSURANCE/i, code: 'BAO_HIEM', label: 'Insurance' },
+            { pattern: /\bMODEL/i, code: 'MA_HANG', label: 'Model' },
+            { pattern: /\bBRAND/i, code: 'THUONG_HIEU', label: 'Brand' },
+            { pattern: /\bORIGIN/i, code: 'XUAT_XU', label: 'Origin' },
         ];
 
         for (const page of structure.pages) {
-            for (const item of page.items) {
-                for (const lp of labelPatterns) {
-                    if (lp.pattern.test(item.text)) {
-                        // Found a label — the value is likely to the right or below
-                        const valueItem = page.items.find(other =>
-                            other !== item &&
-                            other.text.trim().length > 0 &&
-                            ((Math.abs(other.y - item.y) < 5 && other.x > item.x + item.width) || // Same line, to the right
-                             (other.y > item.y && other.y < item.y + 20 && Math.abs(other.x - item.x) < 50)) // Next line, similar x
-                        );
+            // ----- Step A: Reconstruct text LINES from fragmented PDF items -----
+            // PDF text items are often fragmented. Group items on same Y-level into lines.
+            const items = page.items.slice().sort((a, b) => a.y - b.y || a.x - b.x);
+            const lines = [];
+            let currentLine = null;
 
-                        if (valueItem && !structure.extractedFields[lp.code]) {
-                            structure.extractedFields[lp.code] = {
-                                label: lp.label,
-                                sampleValue: valueItem.text.trim(),
-                                x: valueItem.x,
-                                y: valueItem.y,
-                                width: Math.max(valueItem.width, 100),
-                                height: valueItem.height || 14,
-                                page: page.pageNumber,
-                                fontName: valueItem.fontName,
-                                fontSize: valueItem.fontSize
-                            };
+            for (const item of items) {
+                if (!currentLine || Math.abs(item.y - currentLine.y) > 15) {
+                    // New line
+                    currentLine = {
+                        y: item.y,
+                        items: [item],
+                        text: item.text,
+                        x: item.x,
+                        maxX: item.x + (item.width || 0),
+                        height: item.height || 12
+                    };
+                    lines.push(currentLine);
+                } else {
+                    // Same line — append
+                    currentLine.items.push(item);
+                    currentLine.text += ' ' + item.text;
+                    currentLine.maxX = Math.max(currentLine.maxX, item.x + (item.width || 0));
+                    currentLine.height = Math.max(currentLine.height, item.height || 12);
+                }
+            }
+
+            // ----- Step B: Match LABELS and extract VALUE from the same line -----
+            for (const line of lines) {
+                const lineText = line.text.trim();
+                if (lineText.length < 2) continue;
+
+                for (const lp of labelPatterns) {
+                    if (structure.extractedFields[lp.code]) continue; // Already found
+                    
+                    const match = lineText.match(lp.pattern);
+                    if (!match) continue;
+
+                    // Extract the value part AFTER the label
+                    const afterLabel = lineText.substring(match.index + match[0].length).trim();
+                    // Clean up: remove leading colons, dashes, etc.
+                    const cleanValue = afterLabel.replace(/^[:\s\-–—]+/, '').trim();
+
+                    if (cleanValue.length > 0) {
+                        // Find the physical position of the value text items
+                        // Take items that are to the RIGHT of the label match region
+                        const labelEndX = line.items[0].x + (match.index + match[0].length) * 5; // Approx
+                        const valueItems = line.items.filter(it => it.x > line.items[0].x + 20);
+                        const valueItem = valueItems.length > 0 ? valueItems[0] : line.items[line.items.length - 1];
+                        const lastValueItem = valueItems.length > 0 ? valueItems[valueItems.length - 1] : valueItem;
+
+                        structure.extractedFields[lp.code] = {
+                            label: lp.label,
+                            sampleValue: cleanValue.substring(0, 200), // Limit value length
+                            x: valueItem.x,
+                            y: line.y,
+                            width: Math.max(lastValueItem.x + (lastValueItem.width || 80) - valueItem.x, 120),
+                            height: line.height || 14,
+                            page: page.pageNumber,
+                            fontName: valueItem.fontName || 'default',
+                            fontSize: valueItem.fontSize || 10
+                        };
+                        break; // Move to next line — one label per line
+                    } else {
+                        // Label found but value might be on the NEXT line
+                        const lineIdx = lines.indexOf(line);
+                        if (lineIdx < lines.length - 1) {
+                            const nextLine = lines[lineIdx + 1];
+                            const nextText = nextLine.text.trim();
+                            // Only take next line if it looks like a value (not another label)
+                            const isLabel = labelPatterns.some(p => p.pattern.test(nextText));
+                            if (!isLabel && nextText.length > 1) {
+                                const nextFirst = nextLine.items[0];
+                                const nextLast = nextLine.items[nextLine.items.length - 1];
+                                structure.extractedFields[lp.code] = {
+                                    label: lp.label,
+                                    sampleValue: nextText.substring(0, 200),
+                                    x: nextFirst.x,
+                                    y: nextLine.y,
+                                    width: Math.max(nextLast.x + (nextLast.width || 80) - nextFirst.x, 120),
+                                    height: nextLine.height || 14,
+                                    page: page.pageNumber,
+                                    fontName: nextFirst.fontName || 'default',
+                                    fontSize: nextFirst.fontSize || 10
+                                };
+                            }
                         }
+                        break;
+                    }
+                }
+            }
+
+            // ----- Step C: Also detect INLINE patterns like "NO: MY-TL250922" -----
+            for (const line of lines) {
+                const lineText = line.text.trim();
+                // "NO: xxxx" or "NO.: xxxx"
+                const inlinePatterns = [
+                    { rx: /\bNO[.:]?\s*[:]\s*(.+)/i, code: 'SO_CHUNG_TU', label: 'Document Number' },
+                    { rx: /\bDATE[.:]?\s*[:]\s*(.+)/i, code: 'NGAY', label: 'Date' },
+                    { rx: /\bBUYER[.:]?\s*[:]\s*(.+)/i, code: 'TEN_NGUOI_MUA', label: 'Buyer' },
+                    { rx: /\bSELLER[.:]?\s*[:]\s*(.+)/i, code: 'TEN_NGUOI_BAN', label: 'Seller' },
+                    { rx: /\bTOTAL[.:]?\s*[:]\s*(.+)/i, code: 'TONG_TIEN', label: 'Total Amount' },
+                ];
+                for (const ip of inlinePatterns) {
+                    if (structure.extractedFields[ip.code]) continue;
+                    const m = lineText.match(ip.rx);
+                    if (m && m[1] && m[1].trim().length > 0) {
+                        const val = m[1].trim();
+                        const firstItem = line.items[0];
+                        const lastItem = line.items[line.items.length - 1];
+                        structure.extractedFields[ip.code] = {
+                            label: ip.label,
+                            sampleValue: val,
+                            x: firstItem.x + (line.maxX - firstItem.x) * 0.4, // Value starts ~40% across
+                            y: line.y,
+                            width: Math.max(line.maxX - firstItem.x, 120) * 0.6,
+                            height: line.height || 14,
+                            page: page.pageNumber,
+                            fontName: firstItem.fontName || 'default',
+                            fontSize: firstItem.fontSize || 10
+                        };
                     }
                 }
             }
         }
+
+        console.log(`[Step1:Regex] Detected ${Object.keys(structure.extractedFields).length} fields from text patterns`);
     },
 
     // ═══════════════════════════════════════════════════════════════
@@ -3228,6 +3476,63 @@ const ExportPage = {
                                    });
                               }
                          }
+                     });
+                });
+
+                // ── STEP 3: Draw OCR LABEL overlays (colored tags above fields) ──
+                const labelColors = [
+                    [0.22, 0.56, 0.87],  // Blue
+                    [0.16, 0.71, 0.37],  // Green
+                    [0.90, 0.30, 0.25],  // Red
+                    [0.57, 0.35, 0.82],  // Purple
+                    [0.95, 0.61, 0.07],  // Orange
+                    [0.10, 0.74, 0.61],  // Teal
+                    [0.83, 0.18, 0.42],  // Pink
+                    [0.40, 0.65, 0.12],  // Lime
+                ];
+                let colorIdx = 0;
+                Object.keys(doc.data || {}).forEach(field => {
+                     const metas = doc.meta && doc.meta[field];
+                     if (!metas || !Array.isArray(metas)) return;
+                     const lc = labelColors[colorIdx % labelColors.length];
+                     colorIdx++;
+                     metas.forEach(meta => {
+                         if (typeof meta.x !== 'number' || typeof meta.y !== 'number') return;
+                         const pageOffset = Math.max(0, (parseInt(meta.page) || 1) - 1);
+                         const targetIdx = startIdx + pageOffset;
+                         if (targetIdx >= allPages.length || !font) return;
+                         const page = allPages[targetIdx];
+                         const { height: pageH } = page.getSize();
+                         const w = meta.width || 80;
+                         const h = meta.height || 16;
+                         const pdfY = pageH - meta.y - h;
+                         // Colored border around field value
+                         page.drawRectangle({
+                             x: meta.x - 1, y: pdfY - 1,
+                             width: w + 2, height: h + 2,
+                             borderColor: rgb(lc[0], lc[1], lc[2]),
+                             borderWidth: 0.8, opacity: 0.6
+                         });
+                         // Label tag above field
+                         const labelText = (meta.label || field).substring(0, 30);
+                         const labelFontSize = 6;
+                         let labelW;
+                         try { labelW = font.widthOfTextAtSize(labelText, labelFontSize) + 6; } catch(e) { labelW = 40; }
+                         labelW = Math.max(labelW, 20);
+                         const labelH = 9;
+                         // Label background
+                         page.drawRectangle({
+                             x: meta.x - 1, y: pdfY + h + 1,
+                             width: labelW, height: labelH,
+                             color: rgb(lc[0], lc[1], lc[2]), borderWidth: 0
+                         });
+                         // Label text (white)
+                         try {
+                             page.drawText(labelText, {
+                                 x: meta.x + 2, y: pdfY + h + 3,
+                                 font, size: labelFontSize, color: rgb(1, 1, 1)
+                             });
+                         } catch(e) {}
                      });
                 });
                 
