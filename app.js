@@ -3782,9 +3782,28 @@ const GeneratePage = {
         const useExcelData = allDocInstances && Object.keys(allDocInstances).length > 0;
         let generationQueue = [];
 
+        // Check if user has a specific filter active in the Mapper
+        const instSelect = document.getElementById('gen-mapper-instance-select');
+        const activeFilter = instSelect ? instSelect.value : 'all';
+        let filteredKeys = useExcelData ? Object.keys(allDocInstances) : [];
+
+        if (useExcelData && activeFilter !== 'all') {
+            // If the user picked a specific instance key like "CASE_123___Invoice",
+            // they might want only that specific one, or everything with the same "Invoice" name.
+            // Following "đúng mẫu tôi đã chọn", we'll filter to items that match the docInstance name
+            // of the selected item.
+            const selectedDocInstanceName = allDocInstances[activeFilter]?.docInstance;
+            if (selectedDocInstanceName) {
+                filteredKeys = filteredKeys.filter(key => allDocInstances[key].docInstance === selectedDocInstanceName);
+                this._log(log, `Filtered queue to pattern: "${selectedDocInstanceName}"`, 'info');
+            }
+        }
+
         if (useExcelData) {
-            const instKeys = Object.keys(allDocInstances);
-            instKeys.forEach(key => {
+            // Respect the requested count limit
+            const finalKeys = filteredKeys.slice(0, requestedCount);
+            
+            finalKeys.forEach(key => {
                 const inst = allDocInstances[key];
                 generationQueue.push({
                     caseId: inst.caseId,
@@ -3792,7 +3811,11 @@ const GeneratePage = {
                     fields: inst.fields
                 });
             });
-            this._log(log, `✓ Excel data: ${generationQueue.length} document(s) loaded`, 'success');
+            this._log(log, `✓ Queue ready: ${generationQueue.length} document(s) (of ${filteredKeys.length} matching rows)`, 'success');
+            
+            if (generationQueue.length === 0 && filteredKeys.length > 0) {
+                this._log(log, `⚠ No matching rows found for the current filter.`, 'warning');
+            }
 
             // Show sample of what Excel provides
             if (generationQueue.length > 0) {
