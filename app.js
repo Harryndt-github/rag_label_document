@@ -2783,7 +2783,13 @@ const GeneratePage = {
         const tpl = DocumentStore.uploadedTemplates.find(t => t.id === select.value);
 
         const mapperWrap = document.getElementById('gen-visual-mapper');
-        if (!schema || Object.keys(schema).length === 0 || !tpl || !tpl._file) {
+        if (!schema || Object.keys(schema).length === 0 || !tpl) {
+            if (mapperWrap) mapperWrap.style.display = 'none';
+            return;
+        }
+
+        if (!tpl._file) {
+            alert("⚠️ Please Upload an actual Template file (PDF/Image) in 'Source Template' first to use the Visual Mapper!");
             if (mapperWrap) mapperWrap.style.display = 'none';
             return;
         }
