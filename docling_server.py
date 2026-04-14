@@ -404,7 +404,21 @@ def parse_document():
             return jsonify(_generate_mock_data(file.filename))
 
         # ── Run Docling conversion ──
-        converter = DocumentConverter()
+        try:
+            from docling.document_converter import PdfFormatOption
+            pipeline_options = PdfPipelineOptions()
+            pipeline_options.do_ocr = True 
+            
+            converter = DocumentConverter(
+                allowed_formats=[InputFormat.PDF, InputFormat.IMAGE],
+                format_options={
+                    InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+                }
+            )
+        except Exception as e:
+            print(f"  ⚠ Could not initialize advanced Docling options (OCR/Image): {e}")
+            converter = DocumentConverter()
+            
         result = converter.convert(temp_path)
 
         print(f"  ✓ Docling conversion complete")

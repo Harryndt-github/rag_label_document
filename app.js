@@ -176,21 +176,21 @@ const DocumentStore = {
             return rndStr(addresses);
         // SO = Number (number-type fields)
         if (fc.includes('so_credit') || fc.includes('so_cn') || fc.includes('so_dn'))
-            return `CN-${rndStr(['MY','TL','SG','BD'])}${rndInt(100000,999999)}`;
+            return `CN-${rndStr(['MY', 'TL', 'SG', 'BD'])}${rndInt(100000, 999999)}`;
         if (fc.includes('so_hoa_don') || fc.includes('so_invoice'))
-            return `INV-${rndStr(['MY','TL','SG','BD'])}${rndInt(100000,999999)}`;
+            return `INV-${rndStr(['MY', 'TL', 'SG', 'BD'])}${rndInt(100000, 999999)}`;
         if (fc.includes('so_hop_dong') || fc.includes('so_contract') || fc.includes('so_sc'))
-            return `SC-${rndStr(['MY','TL','SG','BD'])}${rndInt(100000,999999)}`;
+            return `SC-${rndStr(['MY', 'TL', 'SG', 'BD'])}${rndInt(100000, 999999)}`;
         if (fc.includes('so_to_khai') || fc.includes('so_tkhq'))
-            return `${rndInt(300,399)}${String(rndInt(1,99)).padStart(3,'0')}/${rndStr(['HCM','HAN','HPH'])}/${rndInt(2025,2026)}`;
+            return `${rndInt(300, 399)}${String(rndInt(1, 99)).padStart(3, '0')}/${rndStr(['HCM', 'HAN', 'HPH'])}/${rndInt(2025, 2026)}`;
         if (fc.includes('so_van_don') || fc.includes('so_bl') || fc.includes('so_bill'))
-            return `COSU${rndInt(1000000,9999999)}`;
+            return `COSU${rndInt(1000000, 9999999)}`;
         if (fc.includes('so_container'))
-            return `${rndStr(['MSCU','HLXU','CMAU','OOLU','TGHU'])}${rndInt(1000000,9999999)}`;
+            return `${rndStr(['MSCU', 'HLXU', 'CMAU', 'OOLU', 'TGHU'])}${rndInt(1000000, 9999999)}`;
         if (fc.includes('so_seal') || fc.includes('seal'))
-            return `SL${rndInt(100000,999999)}`;
+            return `SL${rndInt(100000, 999999)}`;
         if (fc.includes('so_') || fc.includes('ma_'))
-            return `${fieldCode.replace(/^(CRN|INV|BL|CI)_/i,'').substring(0,4).toUpperCase()}-${rndInt(100000,999999)}`;
+            return `${fieldCode.replace(/^(CRN|INV|BL|CI)_/i, '').substring(0, 4).toUpperCase()}-${rndInt(100000, 999999)}`;
 
         // NGAY = Date
         if (fc.includes('ngay'))
@@ -233,7 +233,7 @@ const DocumentStore = {
         if (fc.includes('tau') || fc.includes('phuong_tien') || fc.includes('vessel'))
             return rndStr(vessels);
         if (fc.includes('chuyen') || fc.includes('voyage'))
-            return `V.${rndInt(100,999)}${rndStr(['E','W','N','S'])}`;
+            return `V.${rndInt(100, 999)}${rndStr(['E', 'W', 'N', 'S'])}`;
         // TRONG_LUONG = Weight
         if (fc.includes('trong_luong') || fc.includes('weight') || fc.includes('gross') || fc.includes('net'))
             return `${rndAmount(100, 50000)} KG`;
@@ -269,7 +269,7 @@ const DocumentStore = {
         if (fc.includes('address'))
             return rndStr(addresses);
         if (fc.includes('invoice') || fc.includes('credit') || fc.includes('debit'))
-            return `${fc.substring(0,3).toUpperCase()}-${rndStr(['MY','TL','SG'])}${rndInt(100000,999999)}`;
+            return `${fc.substring(0, 3).toUpperCase()}-${rndStr(['MY', 'TL', 'SG'])}${rndInt(100000, 999999)}`;
         if (fc.includes('date') || fc.includes('issued') || fc.includes('created') || fc.includes('etd') || fc.includes('eta'))
             return rndDate();
         if (fc.includes('amount') || fc.includes('total') || fc.includes('subtotal') || fc.includes('price') || fc.includes('value') || fc.includes('cost'))
@@ -303,20 +303,20 @@ const DocumentStore = {
         if (fc.includes('bao_hiem') || fc.includes('insurance'))
             return rndStr(['By Buyer', 'By Seller', 'CIF terms', '110% invoice value']);
         if (fc.includes('ma_hang') || fc.includes('model'))
-            return `${rndStr(['IMSKR','MFG','MDL','SKU'])}${rndInt(1000,9999)}-${rndStr(['L2','H1','A3','B5'])}`;
+            return `${rndStr(['IMSKR', 'MFG', 'MDL', 'SKU'])}${rndInt(1000, 9999)}-${rndStr(['L2', 'H1', 'A3', 'B5'])}`;
         if (fc.includes('thuong_hieu') || fc.includes('brand'))
             return rndStr(['IMS', 'Samsung', 'LG', 'Sony', 'Panasonic', 'Mitsubishi', 'Bosch']);
         if (fc.includes('dien_thoai') || fc.includes('phone') || fc.includes('tel'))
-            return `0${rndInt(2,9)}${rndInt(0,9)}${rndInt(0,9)}-${rndInt(100,999)}-${rndInt(1000,9999)}`;
+            return `0${rndInt(2, 9)}${rndInt(0, 9)}${rndInt(0, 9)}-${rndInt(100, 999)}-${rndInt(1000, 9999)}`;
         if (fc.includes('fax'))
-            return `0${rndInt(2,9)}${rndInt(0,9)}${rndInt(0,9)}-${rndInt(100,999)}-${rndInt(1000,9999)}`;
+            return `0${rndInt(2, 9)}${rndInt(0, 9)}${rndInt(0, 9)}-${rndInt(100, 999)}-${rndInt(1000, 9999)}`;
         if (fc.includes('so_chung_tu') || fc.includes('document_number') || fc.includes('doc_no'))
-            return `${rndStr(['MY-TL','SC','HD'])}${rndInt(100000,999999)}`;
+            return `${rndStr(['MY-TL', 'SC', 'HD'])}${rndInt(100000, 999999)}`;
 
         // ═══════════════════════════════════════════════════
         //  Absolute fallback — use cleaned field name
         // ═══════════════════════════════════════════════════
-        return `${fieldCode.replace(/^(CRN|INV|BL|CI|PI|CO|PL)_/i,'').substring(0,6).toUpperCase()}-${rndInt(1000, 9999)}`;
+        return `${fieldCode.replace(/^(CRN|INV|BL|CI|PI|CO|PL)_/i, '').substring(0, 6).toUpperCase()}-${rndInt(1000, 9999)}`;
     }
 };
 
@@ -1910,7 +1910,7 @@ const DoclingEngine = {
 
             for (let i = 0; i < doclingCodes.length; i++) {
                 const dNorm = doclingNormalized[i];
-                
+
                 // Check if Excel code contains the Docling code or vice versa
                 if (excelNorm.includes(dNorm) || dNorm.includes(excelNorm)) {
                     const score = Math.min(excelNorm.length, dNorm.length) / Math.max(excelNorm.length, dNorm.length);
@@ -2019,12 +2019,12 @@ const AIEngine = {
         // Strip markdown fences
         text = text.replace(/```json\s*/gi, '').replace(/```\s*/gi, '');
         // Try full parse first
-        try { return JSON.parse(text); } catch (_) {}
+        try { return JSON.parse(text); } catch (_) { }
         // Find first { ... } or [ ... ]
         const objMatch = text.match(/\{[\s\S]*\}/);
-        if (objMatch) { try { return JSON.parse(objMatch[0]); } catch (_) {} }
+        if (objMatch) { try { return JSON.parse(objMatch[0]); } catch (_) { } }
         const arrMatch = text.match(/\[[\s\S]*\]/);
-        if (arrMatch) { try { return JSON.parse(arrMatch[0]); } catch (_) {} }
+        if (arrMatch) { try { return JSON.parse(arrMatch[0]); } catch (_) { } }
         return null;
     },
 
@@ -2150,7 +2150,7 @@ Return JSON in this exact format:
         }).join('\n');
 
         const sampleSection = sampleValues && Object.keys(sampleValues).length > 0
-            ? `\nReference data from Excel (create SIMILAR but DIFFERENT values):\n${Object.entries(sampleValues).map(([k,v]) => `  ${k}: "${v}"`).join('\n')}`
+            ? `\nReference data from Excel (create SIMILAR but DIFFERENT values):\n${Object.entries(sampleValues).map(([k, v]) => `  ${k}: "${v}"`).join('\n')}`
             : '';
 
         const systemPrompt = `You are a professional business document generator. Generate realistic data for Vietnamese/international trade documents.
@@ -2432,16 +2432,16 @@ const GeneratePage = {
         if (!file) return;
 
         const ext = file.name.split('.').pop().toLowerCase();
-        
+
         if (ext === 'xlsx' || ext === 'xls') {
             const reader = new FileReader();
             reader.onload = (ev) => {
                 const data = new Uint8Array(ev.target.result);
-                const workbook = XLSX.read(data, {type: 'array'});
+                const workbook = XLSX.read(data, { type: 'array' });
                 const firstSheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[firstSheetName];
                 const json = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
-                
+
                 if (json.length > 0) {
                     const headers = Object.keys(json[0]);
                     this.csvData = { headers, rows: json };
@@ -2566,10 +2566,10 @@ const GeneratePage = {
             console.log('[SyncCSV] Format B: Horizontal (columns as fields, rows as documents)');
 
             // Filter out metadata-like columns that aren't actual field data
-            const metaCols = new Set(['case_id', 'caseid', 'document_instance', 'file_name', 
+            const metaCols = new Set(['case_id', 'caseid', 'document_instance', 'file_name',
                 'doc_instance', 'page', 'x', 'y', 'width', 'height', 'w', 'h',
                 'stt', 'no', 'id', 'index', '#']);
-            
+
             const fieldHeaders = headers.filter(h => {
                 const norm = normalizeHeader(h);
                 return !metaCols.has(norm) && h.trim().length > 0;
@@ -2593,10 +2593,10 @@ const GeneratePage = {
 
             // Build document instances from rows
             rows.forEach((row, rowIdx) => {
-                const caseId = caseIdCol ? (row[caseIdCol] || `CASE_${String(rowIdx + 1).padStart(4, '0')}`).toString().trim() 
-                              : `CASE_${String(rowIdx + 1).padStart(4, '0')}`;
-                const docInst = docInstCol ? (row[docInstCol] || `DOC_${String(rowIdx + 1).padStart(3, '0')}`).toString().trim() 
-                               : `DOC_${String(rowIdx + 1).padStart(3, '0')}`;
+                const caseId = caseIdCol ? (row[caseIdCol] || `CASE_${String(rowIdx + 1).padStart(4, '0')}`).toString().trim()
+                    : `CASE_${String(rowIdx + 1).padStart(4, '0')}`;
+                const docInst = docInstCol ? (row[docInstCol] || `DOC_${String(rowIdx + 1).padStart(3, '0')}`).toString().trim()
+                    : `DOC_${String(rowIdx + 1).padStart(3, '0')}`;
 
                 const instKey = `${caseId}___${docInst}`;
                 allDocInstances[instKey] = { caseId, docInstance: docInst, fields: {} };
@@ -2604,7 +2604,7 @@ const GeneratePage = {
                 fieldHeaders.forEach(header => {
                     const fieldCode = normalizeHeader(header).toUpperCase().replace(/[^A-Z0-9_]/g, '_');
                     const value = (row[header] !== undefined && row[header] !== null) ? String(row[header]) : '';
-                    
+
                     allDocInstances[instKey].fields[fieldCode] = {
                         value,
                         x: 0, y: 0, width: 0, height: 0,
@@ -2636,11 +2636,11 @@ const GeneratePage = {
             newFields.forEach(nf => {
                 if (!MasterLabels.labels.find(l => l.tag === nf.field)) {
                     MasterLabels.labels.push({
-                         name: nf.label || nf.field,
-                         type: nf.type || 'Alphanumeric',
-                         threshold: 95,
-                         tag: nf.field,
-                         status: 'Active'
+                        name: nf.label || nf.field,
+                        type: nf.type || 'Alphanumeric',
+                        threshold: 95,
+                        tag: nf.field,
+                        status: 'Active'
                     });
                     changed = true;
                 }
@@ -2667,7 +2667,7 @@ const GeneratePage = {
         const schema = this._masterFieldSchema;
         const templateFields = this._templateStructure?.extractedFields || {};
         const pageInfo = this._templateStructure?.pages?.[0];
-        
+
         if (!schema || !pageInfo) return;
 
         const pageW = pageInfo.width || 595;
@@ -2682,7 +2682,7 @@ const GeneratePage = {
             if (fieldInfo.hasCoordinates) continue; // Already has coordinates
 
             const excelLabel = (fieldInfo.label || fieldCode).toLowerCase().replace(/[_\-\s]+/g, '');
-            
+
             // Try to find a matching template field
             let bestMatch = null;
             let bestScore = 0;
@@ -3147,18 +3147,18 @@ const GeneratePage = {
             { pattern: /\bPRICE[:\s]/i, code: `${pfx}C_DON_GIA`, label: 'Đơn giá' },
             { pattern: /\bTOTAL[:\s]/i, code: `${pfx}C_THANH_TIEN`, label: 'Thành tiền/ Amount' },
             { pattern: /\bAMOUNT[:\s]/i, code: `${pfx}C_THANH_TIEN`, label: 'Thành tiền/ Amount' },
-            
+
             // Transport / Notification
             { pattern: /\bPORT\s*OF\s*LOADING/i, code: `${pfx}CANG_XUAT`, label: 'Loading Port' },
             { pattern: /\bPORT\s*OF\s*(DISCHARGE|DESTINATION)/i, code: `${pfx}CANG_NHAP`, label: 'Port of Discharge' },
             { pattern: /\bNOTIFY\s*PARTY/i, code: pfx === 'OBL_' ? `${pfx}B_BEN_DUOC_THONG_BAO_TEN` : `${pfx}B_CONG_TY_NHAP_KHAU`, label: pfx === 'OBL_' ? 'Bên được thông báo/ Notify party' : 'Công ty nhập khẩu/ Notify party' },
-            
+
             // Banking / LC
             { pattern: /\bAPPLICANT[:\s]/i, code: `${pfx}B_NGUOI_YEU_CAU_TEN`, label: 'Người yêu cầu/ Applicant' },
             { pattern: /\bBENEFICIARY[:\s]/i, code: `${pfx}B_NGUOI_THU_HUONG_TEN`, label: 'Người thụ hưởng/ Beneficiary' },
             { pattern: /\bISSUING\s*BANK/i, code: `${pfx}A_NGAN_HANG_PHAT_HANH_TEN`, label: 'Ngân hàng phát hành/ Issuing Bank' },
             { pattern: /\bADVISING\s*BANK/i, code: `${pfx}B_NGAN_HANG_THONG_BAO_TEN`, label: 'Ngân hàng thông báo/ Advising Bank' },
-            
+
             // General Company
             { pattern: /\bADDRESS[:\s]/i, code: `${pfx}DIA_CHI`, label: 'Địa Chỉ' },
             { pattern: /\bTEL[:\s]/i, code: `${pfx}DIEN_THOAI`, label: 'Telephone' },
@@ -3223,7 +3223,7 @@ const GeneratePage = {
 
                 for (const lp of labelPatterns) {
                     if (structure.extractedFields[lp.code]) continue; // Already found
-                    
+
                     const match = lineText.match(lp.pattern);
                     if (!match) continue;
 
@@ -3237,7 +3237,7 @@ const GeneratePage = {
                         // Take items that are to the RIGHT of the label
                         const labelCharCount = match.index + match[0].length;
                         const labelEndX = line.items[0].x + (labelCharCount * 6); // Approx 6px per char
-                        
+
                         // Filter items that start after the label (with a small fuzz factor)
                         const valueItems = line.items.filter(it => it.x >= labelEndX - 15);
                         const valueItem = valueItems.length > 0 ? valueItems[0] : line.items[line.items.length - 1];
@@ -3305,11 +3305,11 @@ const GeneratePage = {
                         const val = m[1].trim();
                         const firstItem = line.items[0];
                         const lastItem = line.items[line.items.length - 1];
-                        
+
                         const fullMatchText = m[0];
                         const labelText = fullMatchText.substring(0, fullMatchText.lastIndexOf(val));
                         const approxLabelWidth = labelText.length * 6;
-                        
+
                         structure.extractedFields[ip.code] = {
                             label: ip.label,
                             sampleValue: val,
@@ -3564,7 +3564,7 @@ const GeneratePage = {
                 });
             });
             this._log(log, `✓ Excel data: ${generationQueue.length} document(s) loaded`, 'success');
-            
+
             // Show sample of what Excel provides
             if (generationQueue.length > 0) {
                 const sampleDoc = generationQueue[0];
@@ -3572,7 +3572,7 @@ const GeneratePage = {
                 const withValues = fieldKeys.filter(k => sampleDoc.fields[k].value);
                 const withCoords = fieldKeys.filter(k => sampleDoc.fields[k].x > 0 || sampleDoc.fields[k].y > 0);
                 this._log(log, `  Fields: ${fieldKeys.length} | With values: ${withValues.length} | With coordinates: ${withCoords.length}`, 'info');
-                
+
                 // Preview first 5 field values
                 const preview = withValues.slice(0, 5).map(k => {
                     const v = sampleDoc.fields[k].value;
@@ -3649,7 +3649,7 @@ const GeneratePage = {
         // ════════════════════════════════════════════════
         for (let i = 0; i < generationQueue.length; i++) {
             const item = generationQueue[i];
-            
+
             // Update progress
             const populatePct = 10 + (i / generationQueue.length) * 40;
             fill.style.width = populatePct + '%';
@@ -4063,7 +4063,7 @@ const ExportPage = {
         try {
             const docs = DocumentStore.generatedDocuments;
             if (!docs || docs.length === 0) return null;
-            
+
             if (!window.PDFLib) {
                 alert('PDF-lib is not currently loaded.');
                 return null;
@@ -4081,7 +4081,7 @@ const ExportPage = {
             try {
                 const fontUrl = 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Regular.ttf';
                 fontBuffer = await fetch(fontUrl).then(res => res.arrayBuffer());
-            } catch(e) {
+            } catch (e) {
                 console.warn('Custom Roboto font fetch failed:', e);
             }
 
@@ -4101,14 +4101,14 @@ const ExportPage = {
             for (let i = 0; i < docs.length; i++) {
                 const doc = docs[i];
                 const caseId = doc.caseId || 'Uncategorized';
-                const docInstance = doc.docInstance || `doc_${i+1}`;
-                
+                const docInstance = doc.docInstance || `doc_${i + 1}`;
+
                 const outPdf = await PDFDocument.create();
-                
+
                 if (window.fontkit) {
                     outPdf.registerFontkit(window.fontkit);
                 }
-                
+
                 let font;
                 if (fontBuffer) {
                     font = await outPdf.embedFont(fontBuffer, { subset: true });
@@ -4118,140 +4118,155 @@ const ExportPage = {
 
                 let templatePdfDoc;
                 if (cachedTemplateBytes) {
-                     templatePdfDoc = await PDFDocument.load(cachedTemplateBytes.slice(0));
+                    const mimeType = (templateRef._file && templateRef._file.type) ? templateRef._file.type.toLowerCase() : '';
+                    if (mimeType.includes('image')) {
+                        // Build a single-page PDF wrapping the image template
+                        templatePdfDoc = await PDFDocument.create();
+                        let image;
+                        if (mimeType.includes('png')) {
+                            image = await templatePdfDoc.embedPng(cachedTemplateBytes);
+                        } else {
+                            image = await templatePdfDoc.embedJpg(cachedTemplateBytes);
+                        }
+                        const dims = image.scale(1);
+                        const page = templatePdfDoc.addPage([dims.width, dims.height]);
+                        page.drawImage(image, { x: 0, y: 0, width: dims.width, height: dims.height });
+                    } else {
+                        templatePdfDoc = await PDFDocument.load(cachedTemplateBytes.slice(0));
+                    }
                 } else {
-                     templatePdfDoc = await PDFDocument.create();
-                     const maxPage = doc.maxTemplatePage || 1;
-                     for (let p = 0; p < maxPage; p++) {
-                         templatePdfDoc.addPage([595.28, 841.89]); // A4 fallback
-                     }
+                    templatePdfDoc = await PDFDocument.create();
+                    const maxPage = doc.maxTemplatePage || 1;
+                    for (let p = 0; p < maxPage; p++) {
+                        templatePdfDoc.addPage([595.28, 841.89]); // A4 fallback
+                    }
                 }
-                
+
                 // Copy ALL pages from template
                 const templatePageIndices = templatePdfDoc.getPageIndices();
                 const copiedPages = await outPdf.copyPages(templatePdfDoc, templatePageIndices);
                 const startIdx = outPdf.getPageCount();
                 copiedPages.forEach(p => outPdf.addPage(p));
-                
+
                 const allPages = outPdf.getPages();
-                
+
                 // ── STEP 1: WHITE-BOX over old field VALUES (NOT labels) ──
                 // With Docling, we know exactly where the VALUE is vs the LABEL.
                 // Only white-box the VALUE bounding box to preserve original labels.
                 Object.keys(doc.data || {}).forEach(field => {
-                     const metas = doc.meta && doc.meta[field];
-                     if (!metas || !Array.isArray(metas)) return;
-                     
-                     metas.forEach(meta => {
-                         if (typeof meta.x === 'number' && !isNaN(meta.x) && typeof meta.y === 'number' && !isNaN(meta.y)) {
-                              const pageOffset = Math.max(0, (parseInt(meta.page) || 1) - 1);
-                              const targetIdx = startIdx + pageOffset;
-                              
-                              if (targetIdx < allPages.length) {
-                                   const page = allPages[targetIdx];
-                                   const { height: pageH } = page.getSize();
-                                   
-                                   const w = meta.width || 80;
-                                   const h = meta.height || 16;
-                                   const pdfY = pageH - meta.y - h;
-                                   
-                                   // White-box: cover ONLY the value content area
-                                   // The label area (if known from Docling) is preserved
-                                   page.drawRectangle({
-                                       x: meta.x - 1,
-                                       y: pdfY - 1,
-                                       width: w + 2,
-                                       height: h + 2,
-                                       color: rgb(1, 1, 1),  // Pure white
-                                       borderWidth: 0
-                                   });
-                              }
-                         }
-                     });
+                    const metas = doc.meta && doc.meta[field];
+                    if (!metas || !Array.isArray(metas)) return;
+
+                    metas.forEach(meta => {
+                        if (typeof meta.x === 'number' && !isNaN(meta.x) && typeof meta.y === 'number' && !isNaN(meta.y)) {
+                            const pageOffset = Math.max(0, (parseInt(meta.page) || 1) - 1);
+                            const targetIdx = startIdx + pageOffset;
+
+                            if (targetIdx < allPages.length) {
+                                const page = allPages[targetIdx];
+                                const { height: pageH } = page.getSize();
+
+                                const w = meta.width || 80;
+                                const h = meta.height || 16;
+                                const pdfY = pageH - meta.y - h;
+
+                                // White-box: cover ONLY the value content area
+                                // The label area (if known from Docling) is preserved
+                                page.drawRectangle({
+                                    x: meta.x - 1,
+                                    y: pdfY - 1,
+                                    width: w + 2,
+                                    height: h + 2,
+                                    color: rgb(1, 1, 1),  // Pure white
+                                    borderWidth: 0
+                                });
+                            }
+                        }
+                    });
                 });
 
                 // ── STEP 2: Draw new values on top of white-boxed areas ──
                 Object.keys(doc.data || {}).forEach(field => {
-                     const metas = doc.meta && doc.meta[field];
-                     if (!metas || !Array.isArray(metas)) return;
-                     
-                     metas.forEach(meta => {
-                         if (typeof meta.x === 'number' && !isNaN(meta.x) && typeof meta.y === 'number' && !isNaN(meta.y)) {
-                              const pageOffset = Math.max(0, (parseInt(meta.page) || 1) - 1);
-                              const targetIdx = startIdx + pageOffset;
-                              
-                              if (targetIdx < allPages.length && font) {
-                                   const page = allPages[targetIdx];
-                                   const { height: pageH, width: pageW } = page.getSize();
-                                   
-                                   const w = meta.width || 80;
-                                   const h = meta.height || 16;
-                                   const pdfY = pageH - meta.y - h;
-                                   
-                                   // Calculate appropriate font size to fit the bounding box
-                                   const textValue = String(meta.value || '');
-                                   let fontSize = Math.min(h * 0.7, 11);
-                                   if (fontSize < 6) fontSize = 6;
-                                   
-                                   // Auto-fit text to bounding box
-                                   let displayText = textValue;
-                                   try {
-                                       const textWidth = font.widthOfTextAtSize(displayText, fontSize);
-                                       if (textWidth > w - 4) {
-                                           const ratio = (w - 4) / textWidth;
-                                           if (ratio > 0.6) {
-                                               fontSize = Math.max(6, fontSize * ratio);
-                                           } else {
-                                               // Try wrapping to multi-line if text is long
-                                               const maxChars = Math.floor(displayText.length * ratio);
-                                               if (maxChars > 10 && h > 20) {
-                                                   // Multi-line: break at space
-                                                   const breakPoint = displayText.lastIndexOf(' ', maxChars);
-                                                   if (breakPoint > 5) {
-                                                       const line1 = displayText.substring(0, breakPoint);
-                                                       const line2 = displayText.substring(breakPoint + 1);
-                                                       const lineH = fontSize + 2;
-                                                       
-                                                       page.drawText(line1, {
-                                                           x: meta.x + 2,
-                                                           y: pdfY + h - fontSize - 1,
-                                                           font, size: fontSize,
-                                                           color: rgb(0.05, 0.05, 0.15)
-                                                       });
-                                                       
-                                                       let line2Display = line2;
-                                                       try {
-                                                           if (font.widthOfTextAtSize(line2, fontSize) > w - 4) {
-                                                               const r2 = (w - 4) / font.widthOfTextAtSize(line2, fontSize);
-                                                               line2Display = line2.substring(0, Math.max(1, Math.floor(line2.length * r2) - 1)) + '…';
-                                                           }
-                                                       } catch(e) {}
-                                                       
-                                                       page.drawText(line2Display, {
-                                                           x: meta.x + 2,
-                                                           y: pdfY + h - fontSize - lineH - 1,
-                                                           font, size: fontSize,
-                                                           color: rgb(0.05, 0.05, 0.15)
-                                                       });
-                                                       return; // Skip single-line draw
-                                                   }
-                                               }
-                                               displayText = displayText.substring(0, Math.max(1, maxChars - 1)) + '…';
-                                           }
-                                       }
-                                   } catch(e) { /* ignore font measurement errors */ }
-                                   
-                                   // Draw the new value text (single line)
-                                   page.drawText(displayText, {
-                                       x: meta.x + 2,
-                                       y: pdfY + (h - fontSize) / 2 + 1,
-                                       font: font,
-                                       size: fontSize,
-                                       color: rgb(0.05, 0.05, 0.15)
-                                   });
-                              }
-                         }
-                     });
+                    const metas = doc.meta && doc.meta[field];
+                    if (!metas || !Array.isArray(metas)) return;
+
+                    metas.forEach(meta => {
+                        if (typeof meta.x === 'number' && !isNaN(meta.x) && typeof meta.y === 'number' && !isNaN(meta.y)) {
+                            const pageOffset = Math.max(0, (parseInt(meta.page) || 1) - 1);
+                            const targetIdx = startIdx + pageOffset;
+
+                            if (targetIdx < allPages.length && font) {
+                                const page = allPages[targetIdx];
+                                const { height: pageH, width: pageW } = page.getSize();
+
+                                const w = meta.width || 80;
+                                const h = meta.height || 16;
+                                const pdfY = pageH - meta.y - h;
+
+                                // Calculate appropriate font size to fit the bounding box
+                                const textValue = String(meta.value || '');
+                                let fontSize = Math.min(h * 0.7, 11);
+                                if (fontSize < 6) fontSize = 6;
+
+                                // Auto-fit text to bounding box
+                                let displayText = textValue;
+                                try {
+                                    const textWidth = font.widthOfTextAtSize(displayText, fontSize);
+                                    if (textWidth > w - 4) {
+                                        const ratio = (w - 4) / textWidth;
+                                        if (ratio > 0.6) {
+                                            fontSize = Math.max(6, fontSize * ratio);
+                                        } else {
+                                            // Try wrapping to multi-line if text is long
+                                            const maxChars = Math.floor(displayText.length * ratio);
+                                            if (maxChars > 10 && h > 20) {
+                                                // Multi-line: break at space
+                                                const breakPoint = displayText.lastIndexOf(' ', maxChars);
+                                                if (breakPoint > 5) {
+                                                    const line1 = displayText.substring(0, breakPoint);
+                                                    const line2 = displayText.substring(breakPoint + 1);
+                                                    const lineH = fontSize + 2;
+
+                                                    page.drawText(line1, {
+                                                        x: meta.x + 2,
+                                                        y: pdfY + h - fontSize - 1,
+                                                        font, size: fontSize,
+                                                        color: rgb(0.05, 0.05, 0.15)
+                                                    });
+
+                                                    let line2Display = line2;
+                                                    try {
+                                                        if (font.widthOfTextAtSize(line2, fontSize) > w - 4) {
+                                                            const r2 = (w - 4) / font.widthOfTextAtSize(line2, fontSize);
+                                                            line2Display = line2.substring(0, Math.max(1, Math.floor(line2.length * r2) - 1)) + '…';
+                                                        }
+                                                    } catch (e) { }
+
+                                                    page.drawText(line2Display, {
+                                                        x: meta.x + 2,
+                                                        y: pdfY + h - fontSize - lineH - 1,
+                                                        font, size: fontSize,
+                                                        color: rgb(0.05, 0.05, 0.15)
+                                                    });
+                                                    return; // Skip single-line draw
+                                                }
+                                            }
+                                            displayText = displayText.substring(0, Math.max(1, maxChars - 1)) + '…';
+                                        }
+                                    }
+                                } catch (e) { /* ignore font measurement errors */ }
+
+                                // Draw the new value text (single line)
+                                page.drawText(displayText, {
+                                    x: meta.x + 2,
+                                    y: pdfY + (h - fontSize) / 2 + 1,
+                                    font: font,
+                                    size: fontSize,
+                                    color: rgb(0.05, 0.05, 0.15)
+                                });
+                            }
+                        }
+                    });
                 });
 
                 // ── STEP 3: Draw OCR LABEL overlays (colored tags above value fields) ──
@@ -4266,57 +4281,89 @@ const ExportPage = {
                     [0.40, 0.65, 0.12],  // Lime
                 ];
                 let colorIdx = 0;
+                const placedLabels = []; // Array to track { pageIdx, x, y, width, height }
+
                 Object.keys(doc.data || {}).forEach(field => {
-                     const metas = doc.meta && doc.meta[field];
-                     if (!metas || !Array.isArray(metas)) return;
-                     const lc = labelColors[colorIdx % labelColors.length];
-                     colorIdx++;
-                     metas.forEach(meta => {
-                         if (typeof meta.x !== 'number' || typeof meta.y !== 'number') return;
-                         const pageOffset = Math.max(0, (parseInt(meta.page) || 1) - 1);
-                         const targetIdx = startIdx + pageOffset;
-                         if (targetIdx >= allPages.length || !font) return;
-                         const page = allPages[targetIdx];
-                         const { height: pageH } = page.getSize();
-                         const w = meta.width || 80;
-                         const h = meta.height || 16;
-                         const pdfY = pageH - meta.y - h;
+                    const metas = doc.meta && doc.meta[field];
+                    if (!metas || !Array.isArray(metas)) return;
+                    const lc = labelColors[colorIdx % labelColors.length];
+                    colorIdx++;
+                    metas.forEach(meta => {
+                        if (typeof meta.x !== 'number' || typeof meta.y !== 'number') return;
+                        const pageOffset = Math.max(0, (parseInt(meta.page) || 1) - 1);
+                        const targetIdx = startIdx + pageOffset;
+                        if (targetIdx >= allPages.length || !font) return;
+                        const page = allPages[targetIdx];
+                        const { height: pageH } = page.getSize();
+                        const w = meta.width || 80;
+                        const h = meta.height || 16;
+                        const pdfY = pageH - meta.y - h;
 
-                         // Colored border around the VALUE field (subtle)
-                         page.drawRectangle({
-                             x: meta.x - 1, y: pdfY - 1,
-                             width: w + 2, height: h + 2,
-                             borderColor: rgb(lc[0], lc[1], lc[2]),
-                             borderWidth: 0.5, opacity: 0.4
-                         });
+                        // Colored border around the VALUE field (subtle)
+                        page.drawRectangle({
+                            x: meta.x - 1, y: pdfY - 1,
+                            width: w + 2, height: h + 2,
+                            borderColor: rgb(lc[0], lc[1], lc[2]),
+                            borderWidth: 0.5, opacity: 0.4
+                        });
 
-                         // Label tag above the value field
-                         const labelText = (meta.label || field).substring(0, 30);
-                         const labelFontSize = 5.5;
-                         let labelW;
-                         try { labelW = font.widthOfTextAtSize(labelText, labelFontSize) + 6; } catch(e) { labelW = 40; }
-                         labelW = Math.max(labelW, 20);
-                         const labelH = 8;
+                        // Label tag above the value field
+                        const labelText = (meta.label || field).substring(0, 30);
+                        const labelFontSize = 5.5;
+                        let labelW;
+                        try { labelW = font.widthOfTextAtSize(labelText, labelFontSize) + 6; } catch (e) { labelW = 40; }
+                        labelW = Math.max(labelW, 20);
+                        const labelH = 8;
 
-                         // Label background (with rounded feel via smaller opacity)
-                         page.drawRectangle({
-                             x: meta.x - 1, y: pdfY + h + 1,
-                             width: labelW, height: labelH,
-                             color: rgb(lc[0], lc[1], lc[2]), borderWidth: 0,
-                             opacity: 0.85
-                         });
-                         // Label text (white on colored bg)
-                         try {
-                             page.drawText(labelText, {
-                                 x: meta.x + 2, y: pdfY + h + 2.5,
-                                 font, size: labelFontSize, color: rgb(1, 1, 1)
-                             });
-                         } catch(e) {}
-                     });
+                        let startY = pdfY + h + 1;
+                        let startX = meta.x - 1;
+
+                        // Collision detection array
+                        let hasCollision = true;
+                        let attempts = 0;
+                        while (hasCollision && attempts < 10) {
+                            hasCollision = false;
+                            for (let i = 0; i < placedLabels.length; i++) {
+                                let pl = placedLabels[i];
+                                if (pl.pageIdx !== targetIdx) continue;
+                                if (startX < pl.x + pl.width + 1 && startX + labelW > pl.x - 1 &&
+                                    startY < pl.y + pl.height + 1 && startY + labelH > pl.y - 1) {
+                                    // Overlap detected, shift the label up above the existing label
+                                    startY = pl.y + pl.height + 1;
+                                    hasCollision = true;
+                                    break;
+                                }
+                            }
+                            attempts++;
+                        }
+
+                        placedLabels.push({
+                            pageIdx: targetIdx,
+                            x: startX,
+                            y: startY,
+                            width: labelW,
+                            height: labelH
+                        });
+
+                        // Label background (with rounded feel via smaller opacity)
+                        page.drawRectangle({
+                            x: startX, y: startY,
+                            width: labelW, height: labelH,
+                            color: rgb(lc[0], lc[1], lc[2]), borderWidth: 0,
+                            opacity: 0.85
+                        });
+                        // Label text (white on colored bg)
+                        try {
+                            page.drawText(labelText, {
+                                x: startX + 2, y: startY + 2.5,
+                                font, size: labelFontSize, color: rgb(1, 1, 1)
+                            });
+                        } catch (e) { }
+                    });
                 });
-                
+
                 const pdfBytes = await outPdf.save();
-                
+
                 // Add to ZIP under a folder named by case_id
                 const safeCaseId = caseId.replace(/[^a-zA-Z0-9.\-_]/g, '_');
                 const safeDocInstance = docInstance.replace(/[^a-zA-Z0-9.\-_]/g, '_');
@@ -4357,7 +4404,7 @@ const ExportPage = {
             a.href = url;
             a.download = 'business_documents_archive.zip';
             a.click();
-            
+
             setTimeout(() => URL.revokeObjectURL(url), 1000);
             return 'business_documents_archive.zip';
         } catch (e) {
