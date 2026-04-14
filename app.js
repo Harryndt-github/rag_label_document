@@ -2061,11 +2061,12 @@ const GeneratePage = {
 
         // Auto-select the newly uploaded template
         const select = document.getElementById('gen-source-select');
-        setTimeout(() => {
+        setTimeout(async () => {
             select.value = template.id;
+            // Extract structure FIRST, then update info to show field count
+            await this._extractTemplateStructure();
             this.updateTemplateInfo();
-            this._extractTemplateStructure();
-        }, 50);
+        }, 100);
 
         // Update UI label
         const label = document.getElementById('gen-template-upload-label');
@@ -2112,9 +2113,10 @@ const GeneratePage = {
             const masterSchema = this._masterFieldSchema;
             const allDocInstances = this._allDocInstances;
             const maxTemplatePage = this._maxTemplatePage || 1;
-            const fieldCount = masterSchema ? Object.keys(masterSchema).length : DocumentStore.ocrData.length;
-            const docInstCount = allDocInstances ? Object.keys(allDocInstances).length : 0;
             const templateStruct = this._templateStructure;
+            const templateFieldCount = templateStruct ? Object.keys(templateStruct.extractedFields).length : 0;
+            const fieldCount = masterSchema ? Object.keys(masterSchema).length : (templateFieldCount || DocumentStore.ocrData.length);
+            const docInstCount = allDocInstances ? Object.keys(allDocInstances).length : 0;
 
             // Count fields per page for multi-page display
             let pageBreakdown = '';
@@ -2133,7 +2135,7 @@ const GeneratePage = {
                 <div class="template-info-row"><span>File:</span><strong>${tpl.name}</strong></div>
                 <div class="template-info-row"><span>Size:</span><span>${tpl.size}</span></div>
                 <div class="template-info-row"><span>Template Pages:</span><span>${maxTemplatePage > 1 ? maxTemplatePage + ' pages' : (tpl.pages || 1) + ' page(s)'}</span></div>
-                <div class="template-info-row"><span>Uploaded:</span><span>${tpl.uploadedAt.toLocaleDateString()}</span></div>
+                <div class="template-info-row"><span>Uploaded:</span><span>${tpl.uploadedAt ? tpl.uploadedAt.toLocaleDateString() : 'N/A'}</span></div>
                 <div class="template-info-row"><span>Schema Fields:</span><span style="color:var(--color-accent);font-weight:600">${fieldCount} field(s)</span></div>
                 ${templateStruct ? `<div class="template-info-row"><span>Template Structure:</span><span style="color:var(--color-success);font-weight:600">✓ Extracted</span></div>` : ''}
                 ${pageBreakdown ? `<div class="template-info-row"><span>Page Layout:</span><span style="font-family:var(--font-mono);font-size:10px">${pageBreakdown}</span></div>` : ''}
