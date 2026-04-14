@@ -819,7 +819,13 @@
                                     <h3 style="margin:0; font-size:14px; color:var(--text-primary);">Visual Field Mapper</h3>
                                     <p style="margin:4px 0 0; font-size:11px; color:var(--text-secondary);">Drag tags below to target positions</p>
                                 </div>
-                                <button class="btn btn--sm btn--primary" id="gen-save-mapping-btn">Save Coordinates</button>
+                                <div style="display:flex; gap:10px; align-items:center;">
+                                    <label style="font-size:12px; color:var(--text-secondary);">Filter by Instance:</label>
+                                    <select class="form-input" id="gen-mapper-instance-select" style="width:200px; padding:4px 8px; font-size:12px;">
+                                        <option value="all">All Global Fields</option>
+                                    </select>
+                                    <button class="btn btn--sm btn--primary" id="gen-save-mapping-btn">Save Coordinates</button>
+                                </div>
                             </div>
                             <div class="mapper-canvas-container" style="position:relative; width:100%; max-height:500px; overflow:auto; background:#ebf0f4; padding:20px; text-align:center;">
                                 <div id="mapper-workspace" style="position:relative; display:inline-block; box-shadow:0 4px 12px rgba(0,0,0,0.1);">

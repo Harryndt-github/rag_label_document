@@ -2666,6 +2666,30 @@ const GeneratePage = {
         if (this._templateStructure && this._masterFieldSchema) {
             this._assignCoordinatesFromTemplate();
         }
+
+        // ═══════════════════════════════════════════════════
+        //  Show Visual Mapper & Populate Instance Selector
+        // ═══════════════════════════════════════════════════
+        if (this._masterFieldSchema && DocumentStore.uploadedTemplates.length > 0) {
+            const instSelect = document.getElementById('gen-mapper-instance-select');
+            if (instSelect) {
+                instSelect.innerHTML = '<option value="all">All Global Fields</option>';
+                if (this._allDocInstances) {
+                    Object.keys(this._allDocInstances).forEach(key => {
+                        const opt = document.createElement('option');
+                        opt.value = key;
+                        opt.textContent = key.replace('___', ' | ');
+                        instSelect.appendChild(opt);
+                    });
+                }
+                
+                if (!instSelect._hasListener) {
+                    instSelect.addEventListener('change', () => this._showVisualMapper());
+                    instSelect._hasListener = true;
+                }
+            }
+            this._showVisualMapper();
+        }
     },
 
     // ═══════════════════════════════════════════════════════════════
@@ -2789,6 +2813,9 @@ const GeneratePage = {
     async _showVisualMapper() {
         const schema = this._masterFieldSchema;
         const select = document.getElementById('gen-source-select');
+        const instSelect = document.getElementById('gen-mapper-instance-select');
+        const instanceKey = instSelect ? instSelect.value : 'all';
+        
         const tpl = DocumentStore.uploadedTemplates.find(t => t.id === select.value);
 
         const mapperWrap = document.getElementById('gen-visual-mapper');
@@ -2805,7 +2832,7 @@ const GeneratePage = {
 
         // Show AFTER alert check but BEFORE canvas measuring
         mapperWrap.style.display = 'block';
-        mapperWrap.scrollIntoView({ behavior: 'smooth' });
+        // mapperWrap.scrollIntoView({ behavior: 'smooth' }); // Disable auto-scroll on manual filter to avoid jumpy-ness
 
         const canvas = document.getElementById('mapper-pdf-canvas');
         const ctx = canvas.getContext('2d');
@@ -2850,15 +2877,25 @@ const GeneratePage = {
         const saveBtn = document.getElementById('gen-save-mapping-btn');
         saveBtn.onclick = () => this._saveVisualMapping(pdfScale);
 
-        // Performance Optimization: If we have hundreds of fields, only show the first 50 initially
-        // or stagger them to avoid blocking the UI thread.
-        const entries = Object.entries(schema);
-        const limit = 100; // Sensible limit for dragging at once
-        if (entries.length > limit) {
-            console.warn(`[VisualMapper] ${entries.length} fields detected. Limiting to first ${limit} for performance.`);
+        // Determine which fields to show
+        let fieldsToShow = [];
+        if (instanceKey === 'all' || !this._allDocInstances[instanceKey]) {
+            fieldsToShow = Object.entries(schema);
+        } else {
+            const instFields = this._allDocInstances[instanceKey].fields;
+            fieldsToShow = Object.entries(instFields).map(([code, info]) => {
+                // Merge with schema metadata if needed
+                return [code, { ...schema[code], ...info }];
+            });
         }
 
-        entries.slice(0, limit).forEach(([fieldCode, info]) => {
+        // Performance Optimization
+        const limit = 200; 
+        if (fieldsToShow.length > limit) {
+            console.warn(`[VisualMapper] ${fieldsToShow.length} fields. Limiting to first ${limit}.`);
+        }
+
+        fieldsToShow.slice(0, limit).forEach(([fieldCode, info]) => {
             if (info.page > 1) return;
             
             const div = document.createElement('div');
