@@ -952,18 +952,18 @@ const ImportWizard = {
    ═══════════════════════════════════════════════════════════════ */
 const MasterLabels = {
     labels: [
-        { name: 'Invoice Number', type: 'Alphanumeric', threshold: 95, tag: 'INV_NUM', status: 'Active' },
-        { name: 'Invoice Date', type: 'Date', threshold: 92, tag: 'INV_DATE', status: 'Active' },
-        { name: 'Due Date', type: 'Date', threshold: 88, tag: 'DUE_DATE', status: 'Active' },
-        { name: 'Client Name', type: 'Alphanumeric', threshold: 90, tag: 'CLIENT', status: 'Active' },
-        { name: 'PO Number', type: 'Alphanumeric', threshold: 75, tag: 'PO_NUM', status: 'Warning' },
-        { name: 'Subtotal', type: 'Currency', threshold: 97, tag: 'SUBTOTAL', status: 'Active' },
-        { name: 'Tax Amount', type: 'Currency', threshold: 93, tag: 'TAX_AMT', status: 'Active' },
-        { name: 'Total Amount', type: 'Currency', threshold: 99, tag: 'TOTAL', status: 'Active' },
-        { name: 'Company Name', type: 'Alphanumeric', threshold: 96, tag: 'COMPANY', status: 'Active' },
-        { name: 'Company Address', type: 'Text Block', threshold: 84, tag: 'ADDR', status: 'Active' },
-        { name: 'Tax Rate', type: 'Percentage', threshold: 68, tag: 'TAX_RATE', status: 'Low Confidence' },
-        { name: 'Line Items', type: 'Text Block', threshold: 82, tag: 'ITEMS', status: 'Active' },
+        { name: 'Số Document/ Invoice No', type: 'Alphanumeric', threshold: 95, tag: 'INV_SO_HOA_DON', status: 'Active' },
+        { name: 'Số chứng từ/ PACKING LIST', type: 'Alphanumeric', threshold: 95, tag: 'PKL_SO_CHUNG_TU', status: 'Active' },
+        { name: 'Ngày chứng từ/ Date', type: 'Date', threshold: 92, tag: 'INV_NGAY_LAP', status: 'Active' },
+        { name: 'Ngày hợp đồng', type: 'Date', threshold: 92, tag: 'CON_NGAY_HOP_DONG', status: 'Active' },
+        { name: 'Ngày phát hành/ Date of Issue', type: 'Date', threshold: 88, tag: 'LOC_NGAY_PHAT_HANH', status: 'Active' },
+        { name: 'Người mua/ For account & risk of messrs', type: 'Alphanumeric', threshold: 90, tag: 'INV_B_NGUOI_MUA_TEN', status: 'Active' },
+        { name: 'Người bán/ Seller', type: 'Alphanumeric', threshold: 90, tag: 'INV_B_NGUOI_BAN_TEN', status: 'Active' },
+        { name: 'Thành tiền/ Amount', type: 'Currency', threshold: 97, tag: 'INV_C_THANH_TIEN', status: 'Active' },
+        { name: 'Tên hàng hóa', type: 'Text Block', threshold: 82, tag: 'INV_C_TEN_HANG', status: 'Active' },
+        { name: 'Số lượng/ Quantity', type: 'Numeric', threshold: 88, tag: 'INV_C_SO_LUONG', status: 'Active' },
+        { name: 'Đơn giá', type: 'Currency', threshold: 93, tag: 'INV_C_DON_GIA', status: 'Warning' },
+        { name: 'Địa Chỉ', type: 'Text Block', threshold: 84, tag: 'INV_DIA_CHI', status: 'Low Confidence' }
     ],
 
     init() {
