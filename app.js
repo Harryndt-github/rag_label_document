@@ -950,21 +950,27 @@ const ImportWizard = {
 /* ═══════════════════════════════════════════════════════════════
    MASTER DATA LABELS
    ═══════════════════════════════════════════════════════════════ */
+const defaultLabels = [
+    { name: 'Số Document/ Invoice No', type: 'Alphanumeric', threshold: 95, tag: 'INV_SO_HOA_DON', status: 'Active' },
+    { name: 'Số chứng từ/ PACKING LIST', type: 'Alphanumeric', threshold: 95, tag: 'PKL_SO_CHUNG_TU', status: 'Active' },
+    { name: 'Ngày chứng từ/ Date', type: 'Date', threshold: 92, tag: 'INV_NGAY_LAP', status: 'Active' },
+    { name: 'Ngày hợp đồng', type: 'Date', threshold: 92, tag: 'CON_NGAY_HOP_DONG', status: 'Active' },
+    { name: 'Ngày phát hành/ Date of Issue', type: 'Date', threshold: 88, tag: 'LOC_NGAY_PHAT_HANH', status: 'Active' },
+    { name: 'Người mua/ For account & risk of messrs', type: 'Alphanumeric', threshold: 90, tag: 'INV_B_NGUOI_MUA_TEN', status: 'Active' },
+    { name: 'Người bán/ Seller', type: 'Alphanumeric', threshold: 90, tag: 'INV_B_NGUOI_BAN_TEN', status: 'Active' },
+    { name: 'Thành tiền/ Amount', type: 'Currency', threshold: 97, tag: 'INV_C_THANH_TIEN', status: 'Active' },
+    { name: 'Tên hàng hóa', type: 'Text Block', threshold: 82, tag: 'INV_C_TEN_HANG', status: 'Active' },
+    { name: 'Số lượng/ Quantity', type: 'Numeric', threshold: 88, tag: 'INV_C_SO_LUONG', status: 'Active' },
+    { name: 'Đơn giá', type: 'Currency', threshold: 93, tag: 'INV_C_DON_GIA', status: 'Warning' },
+    { name: 'Địa Chỉ', type: 'Text Block', threshold: 84, tag: 'INV_DIA_CHI', status: 'Low Confidence' }
+];
+
 const MasterLabels = {
-    labels: [
-        { name: 'Số Document/ Invoice No', type: 'Alphanumeric', threshold: 95, tag: 'INV_SO_HOA_DON', status: 'Active' },
-        { name: 'Số chứng từ/ PACKING LIST', type: 'Alphanumeric', threshold: 95, tag: 'PKL_SO_CHUNG_TU', status: 'Active' },
-        { name: 'Ngày chứng từ/ Date', type: 'Date', threshold: 92, tag: 'INV_NGAY_LAP', status: 'Active' },
-        { name: 'Ngày hợp đồng', type: 'Date', threshold: 92, tag: 'CON_NGAY_HOP_DONG', status: 'Active' },
-        { name: 'Ngày phát hành/ Date of Issue', type: 'Date', threshold: 88, tag: 'LOC_NGAY_PHAT_HANH', status: 'Active' },
-        { name: 'Người mua/ For account & risk of messrs', type: 'Alphanumeric', threshold: 90, tag: 'INV_B_NGUOI_MUA_TEN', status: 'Active' },
-        { name: 'Người bán/ Seller', type: 'Alphanumeric', threshold: 90, tag: 'INV_B_NGUOI_BAN_TEN', status: 'Active' },
-        { name: 'Thành tiền/ Amount', type: 'Currency', threshold: 97, tag: 'INV_C_THANH_TIEN', status: 'Active' },
-        { name: 'Tên hàng hóa', type: 'Text Block', threshold: 82, tag: 'INV_C_TEN_HANG', status: 'Active' },
-        { name: 'Số lượng/ Quantity', type: 'Numeric', threshold: 88, tag: 'INV_C_SO_LUONG', status: 'Active' },
-        { name: 'Đơn giá', type: 'Currency', threshold: 93, tag: 'INV_C_DON_GIA', status: 'Warning' },
-        { name: 'Địa Chỉ', type: 'Text Block', threshold: 84, tag: 'INV_DIA_CHI', status: 'Low Confidence' }
-    ],
+    labels: JSON.parse(localStorage.getItem('orc_master_labels')) || defaultLabels,
+
+    saveToStorage() {
+        localStorage.setItem('orc_master_labels', JSON.stringify(this.labels));
+    },
 
     init() {
         this.renderLabels();
@@ -1026,6 +1032,7 @@ const MasterLabels = {
 
             if (name && tag) {
                 this.labels.push({ name, type, threshold, tag, status: threshold >= 80 ? 'Active' : 'Warning' });
+                this.saveToStorage();
                 this.renderLabels();
                 overlay.classList.remove('visible');
 
@@ -2262,6 +2269,27 @@ const GeneratePage = {
         }
         DocumentStore.ocrData = newFields;
         this.updateTemplateInfo();
+
+        // Auto-expand Master Labels
+        if (window.MasterLabels && newFields.length > 0) {
+            let changed = false;
+            newFields.forEach(nf => {
+                if (!MasterLabels.labels.find(l => l.tag === nf.field)) {
+                    MasterLabels.labels.push({
+                         name: nf.label || nf.field,
+                         type: nf.type || 'Alphanumeric',
+                         threshold: 95,
+                         tag: nf.field,
+                         status: 'Active'
+                    });
+                    changed = true;
+                }
+            });
+            if (changed) {
+                MasterLabels.saveToStorage();
+                MasterLabels.renderLabels();
+            }
+        }
     },
 
     _masterFieldSchema: null,
