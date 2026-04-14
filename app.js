@@ -2476,59 +2476,157 @@ const GeneratePage = {
     _syncOcrDataFromCsv() {
         if (!this.csvData) return;
         let newFields = [];
-        if (this.csvData.headers.includes('field_code') && this.csvData.headers.includes('value')) {
-             // Build COMPLETE master schema by scanning ALL rows across ALL document instances
-             const masterSchema = {};
-             const allDocInstances = {};
-             let maxPage = 1;
 
-             for (const r of this.csvData.rows) {
-                 const fieldCode = (r.field_code || '').trim();
-                 if (!fieldCode) continue;
+        const headers = this.csvData.headers;
+        const rows = this.csvData.rows;
 
-                 const caseId = (r.case_id || 'case_unknown').trim();
-                 const docInst = (r.document_instance || r.file_name || 'doc_unknown').trim();
-                 const page = parseInt(r.page) || 1;
-                 const x = parseFloat(r.x) || 0;
-                 const y = parseFloat(r.y) || 0;
-                 const width = parseFloat(r.width) || 80;
-                 const height = parseFloat(r.height) || 16;
-                 const value = (r.value !== undefined && r.value !== null) ? String(r.value) : '';
-                 const label = (r.label || r.field_label || fieldCode).trim();
+        // Normalize header names for matching
+        const normalizeHeader = (h) => (h || '').toString().toLowerCase().trim().replace(/[\s_\-\.]+/g, '_');
+        const headerMap = {};
+        headers.forEach(h => { headerMap[normalizeHeader(h)] = h; });
 
-                 if (page > maxPage) maxPage = page;
+        // ═══════════════════════════════════════════════════════
+        //  FORMAT DETECTION: Determine which Excel format we have
+        // ═══════════════════════════════════════════════════════
+        const hasFieldCode = !!(headerMap['field_code'] || headerMap['fieldcode'] || headerMap['field']);
+        const hasValue = !!(headerMap['value'] || headerMap['gia_tri'] || headerMap['giatri']);
+        const hasCaseId = !!(headerMap['case_id'] || headerMap['caseid']);
 
-                 if (!masterSchema[fieldCode]) {
-                     masterSchema[fieldCode] = {
-                         x, y, width, height, page, label
-                     };
-                 }
+        // Find actual column names
+        const fieldCodeCol = headerMap['field_code'] || headerMap['fieldcode'] || headerMap['field'];
+        const valueCol = headerMap['value'] || headerMap['gia_tri'] || headerMap['giatri'];
+        const labelCol = headerMap['label'] || headerMap['field_label'] || headerMap['nhan'] || headerMap['ten'];
+        const caseIdCol = headerMap['case_id'] || headerMap['caseid'];
+        const docInstCol = headerMap['document_instance'] || headerMap['file_name'] || headerMap['doc_instance'];
+        const pageCol = headerMap['page'] || headerMap['trang'];
+        const xCol = headerMap['x'];
+        const yCol = headerMap['y'];
+        const widthCol = headerMap['width'] || headerMap['w'];
+        const heightCol = headerMap['height'] || headerMap['h'];
 
-                 const instKey = `${caseId}___${docInst}`;
-                 if (!allDocInstances[instKey]) {
-                     allDocInstances[instKey] = { caseId, docInstance: docInst, fields: {} };
-                 }
-                 allDocInstances[instKey].fields[fieldCode] = {
-                     value, x, y, width, height, page, label
-                 };
-             }
+        if (hasFieldCode && hasValue) {
+            // ═══════════════════════════════════════════════════
+            //  FORMAT A: Vertical format (field_code, value, ...)
+            //  Each row = one field. Multiple rows per document.
+            // ═══════════════════════════════════════════════════
+            console.log('[SyncCSV] Format A: Vertical (field_code + value columns)');
+            const masterSchema = {};
+            const allDocInstances = {};
+            let maxPage = 1;
 
-             this._masterFieldSchema = masterSchema;
-             this._allDocInstances = allDocInstances;
-             this._maxTemplatePage = maxPage;
+            for (const r of rows) {
+                const fieldCode = (r[fieldCodeCol] || '').toString().trim();
+                if (!fieldCode) continue;
 
-             newFields = Object.keys(masterSchema).map(code => ({
-                 field: code, label: masterSchema[code].label || code, type: 'Alphanumeric'
-             }));
+                const caseId = caseIdCol ? (r[caseIdCol] || 'case_001').toString().trim() : 'case_001';
+                const docInst = docInstCol ? (r[docInstCol] || 'doc_001').toString().trim() : 'doc_001';
+                const page = pageCol ? (parseInt(r[pageCol]) || 1) : 1;
+                const x = xCol ? (parseFloat(r[xCol]) || 0) : 0;
+                const y = yCol ? (parseFloat(r[yCol]) || 0) : 0;
+                const width = widthCol ? (parseFloat(r[widthCol]) || 0) : 0;
+                const height = heightCol ? (parseFloat(r[heightCol]) || 0) : 0;
+                const value = valueCol ? ((r[valueCol] !== undefined && r[valueCol] !== null) ? String(r[valueCol]) : '') : '';
+                const label = labelCol ? (r[labelCol] || fieldCode).toString().trim() : fieldCode;
 
-             console.log(`[SyncCSV] Master schema: ${Object.keys(masterSchema).length} fields across ${maxPage} pages.`);
-             console.log(`[SyncCSV] Document instances found: ${Object.keys(allDocInstances).length}`);
+                if (page > maxPage) maxPage = page;
+
+                if (!masterSchema[fieldCode]) {
+                    masterSchema[fieldCode] = {
+                        x, y, width, height, page, label,
+                        hasCoordinates: (x > 0 || y > 0) && width > 0
+                    };
+                }
+
+                const instKey = `${caseId}___${docInst}`;
+                if (!allDocInstances[instKey]) {
+                    allDocInstances[instKey] = { caseId, docInstance: docInst, fields: {} };
+                }
+                allDocInstances[instKey].fields[fieldCode] = {
+                    value, x, y, width, height, page, label,
+                    fromExcel: true
+                };
+            }
+
+            this._masterFieldSchema = masterSchema;
+            this._allDocInstances = allDocInstances;
+            this._maxTemplatePage = maxPage;
+
+            newFields = Object.keys(masterSchema).map(code => ({
+                field: code, label: masterSchema[code].label || code, type: 'Alphanumeric'
+            }));
+
+            console.log(`[SyncCSV] Format A: ${Object.keys(masterSchema).length} fields, ${Object.keys(allDocInstances).length} doc instances, ${maxPage} pages`);
+
         } else {
-             newFields = this.csvData.headers.map(h => ({ field: h, label: h, type: 'Alphanumeric' }));
-             this._masterFieldSchema = null;
-             this._allDocInstances = null;
-             this._maxTemplatePage = 1;
+            // ═══════════════════════════════════════════════════
+            //  FORMAT B: Horizontal format (columns = fields, rows = documents)
+            //  Each column header = field label
+            //  Each row = one document instance with values
+            // ═══════════════════════════════════════════════════
+            console.log('[SyncCSV] Format B: Horizontal (columns as fields, rows as documents)');
+
+            // Filter out metadata-like columns that aren't actual field data
+            const metaCols = new Set(['case_id', 'caseid', 'document_instance', 'file_name', 
+                'doc_instance', 'page', 'x', 'y', 'width', 'height', 'w', 'h',
+                'stt', 'no', 'id', 'index', '#']);
+            
+            const fieldHeaders = headers.filter(h => {
+                const norm = normalizeHeader(h);
+                return !metaCols.has(norm) && h.trim().length > 0;
+            });
+
+            const masterSchema = {};
+            const allDocInstances = {};
+            const maxPage = 1;
+
+            // Build field schema from column headers
+            fieldHeaders.forEach((header, idx) => {
+                const fieldCode = normalizeHeader(header).toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+                masterSchema[fieldCode] = {
+                    x: 0, y: 0, width: 0, height: 0,
+                    page: 1,
+                    label: header.trim(),
+                    hasCoordinates: false,
+                    originalHeader: header  // Keep original for value lookup
+                };
+            });
+
+            // Build document instances from rows
+            rows.forEach((row, rowIdx) => {
+                const caseId = caseIdCol ? (row[caseIdCol] || `CASE_${String(rowIdx + 1).padStart(4, '0')}`).toString().trim() 
+                              : `CASE_${String(rowIdx + 1).padStart(4, '0')}`;
+                const docInst = docInstCol ? (row[docInstCol] || `DOC_${String(rowIdx + 1).padStart(3, '0')}`).toString().trim() 
+                               : `DOC_${String(rowIdx + 1).padStart(3, '0')}`;
+
+                const instKey = `${caseId}___${docInst}`;
+                allDocInstances[instKey] = { caseId, docInstance: docInst, fields: {} };
+
+                fieldHeaders.forEach(header => {
+                    const fieldCode = normalizeHeader(header).toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+                    const value = (row[header] !== undefined && row[header] !== null) ? String(row[header]) : '';
+                    
+                    allDocInstances[instKey].fields[fieldCode] = {
+                        value,
+                        x: 0, y: 0, width: 0, height: 0,
+                        page: 1,
+                        label: header.trim(),
+                        fromExcel: true
+                    };
+                });
+            });
+
+            this._masterFieldSchema = masterSchema;
+            this._allDocInstances = allDocInstances;
+            this._maxTemplatePage = maxPage;
+
+            newFields = Object.keys(masterSchema).map(code => ({
+                field: code, label: masterSchema[code].label || code, type: 'Alphanumeric'
+            }));
+
+            console.log(`[SyncCSV] Format B: ${fieldHeaders.length} fields × ${rows.length} rows = ${Object.keys(allDocInstances).length} doc instances`);
+            console.log(`[SyncCSV] Fields: ${fieldHeaders.join(', ')}`);
         }
+
         DocumentStore.ocrData = newFields;
         this.updateTemplateInfo();
 
@@ -2552,6 +2650,131 @@ const GeneratePage = {
                 MasterLabels.renderLabels();
             }
         }
+
+        // ═══════════════════════════════════════════════════
+        //  Auto-assign coordinates from template if available
+        // ═══════════════════════════════════════════════════
+        if (this._templateStructure && this._masterFieldSchema) {
+            this._assignCoordinatesFromTemplate();
+        }
+    },
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Match Excel field labels to template-extracted positions
+    //  and assign coordinates to fields that don't have them
+    // ═══════════════════════════════════════════════════════════════
+    _assignCoordinatesFromTemplate() {
+        const schema = this._masterFieldSchema;
+        const templateFields = this._templateStructure?.extractedFields || {};
+        const pageInfo = this._templateStructure?.pages?.[0];
+        
+        if (!schema || !pageInfo) return;
+
+        const pageW = pageInfo.width || 595;
+        const pageH = pageInfo.height || 842;
+
+        // Step 1: Try to match Excel labels to template-extracted field positions
+        const templateKeys = Object.keys(templateFields);
+        const usedTemplateKeys = new Set();
+        let matched = 0;
+
+        for (const [fieldCode, fieldInfo] of Object.entries(schema)) {
+            if (fieldInfo.hasCoordinates) continue; // Already has coordinates
+
+            const excelLabel = (fieldInfo.label || fieldCode).toLowerCase().replace(/[_\-\s]+/g, '');
+            
+            // Try to find a matching template field
+            let bestMatch = null;
+            let bestScore = 0;
+
+            for (const tKey of templateKeys) {
+                if (usedTemplateKeys.has(tKey)) continue;
+                const tField = templateFields[tKey];
+                const tLabel = (tField.label || tKey).toLowerCase().replace(/[_\-\s]+/g, '');
+
+                // Score matching
+                let score = 0;
+                if (excelLabel === tLabel) score = 100;
+                else if (excelLabel.includes(tLabel) || tLabel.includes(excelLabel)) score = 70;
+                else {
+                    // Word overlap
+                    const eWords = excelLabel.match(/[a-z]{2,}/g) || [];
+                    const tWords = tLabel.match(/[a-z]{2,}/g) || [];
+                    const overlap = eWords.filter(w => tWords.some(tw => tw.includes(w) || w.includes(tw))).length;
+                    if (overlap > 0) score = Math.min(60, overlap * 20);
+                }
+
+                if (score > bestScore && score >= 30) {
+                    bestScore = score;
+                    bestMatch = tKey;
+                }
+            }
+
+            if (bestMatch) {
+                const tField = templateFields[bestMatch];
+                schema[fieldCode].x = tField.x;
+                schema[fieldCode].y = tField.y;
+                schema[fieldCode].width = tField.width || 200;
+                schema[fieldCode].height = tField.height || 16;
+                schema[fieldCode].page = tField.page || 1;
+                schema[fieldCode].hasCoordinates = true;
+                usedTemplateKeys.add(bestMatch);
+                matched++;
+
+                // Also update all doc instances
+                if (this._allDocInstances) {
+                    for (const inst of Object.values(this._allDocInstances)) {
+                        if (inst.fields[fieldCode]) {
+                            inst.fields[fieldCode].x = tField.x;
+                            inst.fields[fieldCode].y = tField.y;
+                            inst.fields[fieldCode].width = tField.width || 200;
+                            inst.fields[fieldCode].height = tField.height || 16;
+                            inst.fields[fieldCode].page = tField.page || 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Step 2: Auto-layout remaining unmatched fields in a grid
+        const unmatchedFields = Object.entries(schema).filter(([_, f]) => !f.hasCoordinates);
+        if (unmatchedFields.length > 0) {
+            const marginLeft = 40;
+            const marginTop = 60;
+            const colWidth = (pageW - marginLeft * 2) / 2;  // 2 columns
+            const rowHeight = 28;
+            const labelWidth = Math.min(colWidth * 0.35, 120);
+            const valueWidth = colWidth - labelWidth - 10;
+
+            unmatchedFields.forEach(([fieldCode, fieldInfo], idx) => {
+                const col = idx % 2;
+                const row = Math.floor(idx / 2);
+                const baseX = marginLeft + col * colWidth + labelWidth + 5;
+                const baseY = marginTop + row * rowHeight;
+
+                schema[fieldCode].x = baseX;
+                schema[fieldCode].y = baseY;
+                schema[fieldCode].width = valueWidth;
+                schema[fieldCode].height = 16;
+                schema[fieldCode].page = 1 + Math.floor(baseY / (pageH - 80));
+                schema[fieldCode].hasCoordinates = true;
+
+                // Update all doc instances
+                if (this._allDocInstances) {
+                    for (const inst of Object.values(this._allDocInstances)) {
+                        if (inst.fields[fieldCode]) {
+                            inst.fields[fieldCode].x = baseX;
+                            inst.fields[fieldCode].y = baseY;
+                            inst.fields[fieldCode].width = valueWidth;
+                            inst.fields[fieldCode].height = 16;
+                            inst.fields[fieldCode].page = schema[fieldCode].page;
+                        }
+                    }
+                }
+            });
+        }
+
+        console.log(`[CoordAssign] Matched ${matched} fields to template positions, auto-laid out ${unmatchedFields.length} remaining fields`);
     },
 
     _masterFieldSchema: null,
@@ -3274,6 +3497,15 @@ const GeneratePage = {
             this._log(log, `⚠ Template structure not extracted — using schema-based generation`, 'info');
         }
 
+        // ── Ensure Excel fields have coordinates from template ──
+        if (this._templateStructure && this._masterFieldSchema) {
+            const needsCoords = Object.values(this._masterFieldSchema).some(f => !f.hasCoordinates);
+            if (needsCoords) {
+                this._assignCoordinatesFromTemplate();
+                this._log(log, `✓ Auto-assigned coordinates to Excel fields from template`, 'success');
+            }
+        }
+
         fill.style.width = '10%';
 
         // ════════════════════════════════════════════════
@@ -3331,7 +3563,25 @@ const GeneratePage = {
                     fields: inst.fields
                 });
             });
-            this._log(log, `Excel data loaded: ${generationQueue.length} document instance(s)`, 'info');
+            this._log(log, `✓ Excel data: ${generationQueue.length} document(s) loaded`, 'success');
+            
+            // Show sample of what Excel provides
+            if (generationQueue.length > 0) {
+                const sampleDoc = generationQueue[0];
+                const fieldKeys = Object.keys(sampleDoc.fields);
+                const withValues = fieldKeys.filter(k => sampleDoc.fields[k].value);
+                const withCoords = fieldKeys.filter(k => sampleDoc.fields[k].x > 0 || sampleDoc.fields[k].y > 0);
+                this._log(log, `  Fields: ${fieldKeys.length} | With values: ${withValues.length} | With coordinates: ${withCoords.length}`, 'info');
+                
+                // Preview first 5 field values
+                const preview = withValues.slice(0, 5).map(k => {
+                    const v = sampleDoc.fields[k].value;
+                    return `${sampleDoc.fields[k].label || k}: "${v.length > 25 ? v.substring(0, 22) + '...' : v}"`;
+                });
+                if (preview.length > 0) {
+                    this._log(log, `  Preview: ${preview.join(' | ')}`, 'msg');
+                }
+            }
         } else if (effectiveSchema && Object.keys(effectiveSchema).length > 0) {
             this._log(log, `Schema: ${Object.keys(effectiveSchema).length} field(s)`, 'info');
             this._log(log, `Generating ${requestedCount} document(s) with ${useAI && AIEngine.isAvailable ? 'AI' : 'synthetic'} data...`, 'info');
@@ -3394,6 +3644,8 @@ const GeneratePage = {
 
         // ════════════════════════════════════════════════
         //  Populate content for items that need it
+        //  CRITICAL: Preserve Excel values! Only populate
+        //  fields that are genuinely empty.
         // ════════════════════════════════════════════════
         for (let i = 0; i < generationQueue.length; i++) {
             const item = generationQueue[i];
@@ -3403,7 +3655,22 @@ const GeneratePage = {
             fill.style.width = populatePct + '%';
             countEl.textContent = `Populating ${i + 1} / ${actualCount}`;
 
-            if (item.needsPopulation || (useAI && AIEngine.isAvailable)) {
+            // Check how many fields already have Excel values
+            const excelFields = Object.keys(item.fields).filter(fc => item.fields[fc].fromExcel && item.fields[fc].value);
+            const emptyFields = Object.keys(item.fields).filter(fc => !item.fields[fc].value);
+
+            if (excelFields.length > 0) {
+                // Excel data exists — log it and preserve values
+                if (i === 0) {
+                    this._log(log, `✓ Excel provides ${excelFields.length} field values per document`, 'success');
+                    if (emptyFields.length > 0) {
+                        this._log(log, `  ${emptyFields.length} empty fields will use ${useAI && AIEngine.isAvailable ? 'AI' : 'synthetic'} fallback`, 'info');
+                    }
+                }
+            }
+
+            // Only run AI/population on fields that NEED it (empty, non-Excel fields)
+            if (emptyFields.length > 0 && item.needsPopulation) {
                 const existingValues = {};
                 Object.keys(item.fields).forEach(fc => {
                     if (item.fields[fc].value) existingValues[fc] = item.fields[fc].value;
@@ -3411,21 +3678,21 @@ const GeneratePage = {
 
                 const populated = await this._populateContentForDocument(
                     item.fields, docContext,
-                    item.needsPopulation && useAI, // Use full AI generation for items without data
+                    useAI && AIEngine.isAvailable,
                     existingValues,
                     log,
-                    i  // Pass document index for unique generation
+                    i
                 );
 
-                // Update field values
-                Object.keys(populated).forEach(fc => {
-                    if (item.fields[fc]) {
+                // ONLY update fields that were empty — never override Excel values
+                emptyFields.forEach(fc => {
+                    if (populated[fc] && item.fields[fc]) {
                         item.fields[fc].value = populated[fc];
                     }
                 });
             }
 
-            // Ensure all fields have values (random fallback)
+            // Final fallback: only for fields that are STILL empty after all attempts
             Object.keys(item.fields).forEach(fc => {
                 if (!item.fields[fc].value) {
                     item.fields[fc].value = DocumentStore.generateRandomValue(fc);
